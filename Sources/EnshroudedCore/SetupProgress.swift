@@ -53,7 +53,10 @@ public struct SetupProgress {
     public private(set) var started = Date()
     private var pending = ""
     public init() {}
-    public mutating func finish(success: Bool) { finished = success; failed = !success }
+    public mutating func finish(success: Bool) {
+        finished = success; failed = !success
+        message = success ? "Setup complete." : "Setup stopped during \(step.title). Check the error below, then retry."
+    }
     public mutating func consume(_ chunk: String) {
         pending += chunk.replacingOccurrences(of: "\r", with: "\n")
         while let end = pending.firstIndex(of: "\n") {

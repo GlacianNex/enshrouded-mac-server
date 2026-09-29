@@ -89,7 +89,8 @@ public struct Engine {
         }
         process.waitUntilExit()
         guard process.terminationStatus == 0 else {
-            throw EngineError("Operation failed (\(process.terminationStatus)). \(result.suffix(1500))")
+            let diagnostic = result.components(separatedBy: .newlines).filter { !$0.contains("[ESM_SETUP] ") }.joined(separator: "\n")
+            throw EngineError("Operation failed (\(process.terminationStatus)). \(diagnostic.suffix(1500))")
         }
         return result
     }
