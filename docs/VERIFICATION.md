@@ -1,5 +1,13 @@
 # Verification
 
+## Release 0.1.1
+
+- Reproduced the 0.1.0 signature failure with ordinary ZIP extraction.
+- Release ZIPs now reject AppleDouble metadata sidecars.
+- Both `ditto` and `unzip` extractions pass strict signature, stapled ticket, and Gatekeeper checks.
+- Downloaded the uploaded GitHub artifact and verified its checksum, extracted signature, and notarization.
+- All 44 tests and GitHub CI passed. Confirmation on the affected second Mac remains pending.
+
 ## Release 0.1
 
 - Core tests cover server start/readiness, player-query parsing, three-hour/five-second memory history, configuration preservation, world imports, backup/restore, schedules, and safe app replacement.

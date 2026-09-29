@@ -2,7 +2,7 @@
 
 ## First Installation
 
-Download the app from [Releases](https://github.com/GlacianNex/enshrouded-mac-server/releases/latest), unzip it, and open it. Choose **Install & Open**, then **Set Up Server**. Enter a name and different player/admin passwords of at least eight characters. Choose a world to import or create a new one.
+Download the app from [Latest Release](https://github.com/GlacianNex/enshrouded-mac-server/releases/latest), unzip it into a fresh folder, and open it. Choose **Install & Open**, then **Set Up Server**. Enter a name and different player/admin passwords of at least eight characters. Choose a world to import or create a new one.
 
 Setup automatically downloads Ubuntu, the compatibility tools, and the latest public dedicated server. There is no separate Wine, Steam, or Homebrew installation. First setup requires internet and at least 30 GB free disk space; each server allocates 8 GB RAM, four CPU cores, and a 40 GB virtual disk. Allow more disk space as backups accumulate.
 
@@ -49,3 +49,7 @@ One previous server installation is retained at `data/previous-install`. It may 
 **Open Log** separates server logs and manager activity, with a text filter. **Logs Folder** and **Server Folder** open the relevant files. Do not publish logs or configuration without checking for passwords, public addresses, and player identifiers.
 
 Use **Stop Server** before shutting down the Mac. Closing the management window leaves the manager running. Quitting the manager leaves running game servers active, but monitoring and automation stop. Login startup only occurs after signing in.
+
+## App Reported as Damaged
+
+Version 0.1.0 included hidden metadata files that could invalidate the app signature after extraction. Discard that download and get the [latest release](https://github.com/GlacianNex/enshrouded-mac-server/releases/latest). Extract it into a fresh folder before opening. Existing server data is unaffected.

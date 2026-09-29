@@ -1,6 +1,6 @@
 # 0.1 — Enshrouded Hosting from Your Mac
 
-First public release.
+First public release. **Superseded by [0.1.1](RELEASE-NOTES-0.1.1.md), which fixes a download packaging error. Use the [latest release](https://github.com/GlacianNex/enshrouded-mac-server/releases/latest).**
 
 ## Highlights
 

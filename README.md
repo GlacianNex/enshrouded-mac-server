@@ -2,7 +2,7 @@
 
 Host Enshrouded worlds for your friends from your Mac. This native macOS menu bar app downloads the dedicated server, creates or imports worlds, and manages multiple servers without Terminal setup.
 
-**[Download for Mac](https://github.com/GlacianNex/enshrouded-mac-server/releases/latest)** · [What's New in 0.1](docs/RELEASE-NOTES-0.1.md) · [Setup and Recovery](docs/SETUP.md)
+**[Download for Mac](https://github.com/GlacianNex/enshrouded-mac-server/releases/latest)** · [What's New in 0.1.1](docs/RELEASE-NOTES-0.1.1.md) · [Setup and Recovery](docs/SETUP.md)
 
 Requires **Apple Silicon and macOS 14 Sonoma or later**, internet access for setup, and **30 GB of free space**. Each server environment allocates 8 GB of RAM and four CPU cores; a Mac with at least 16 GB of RAM leaves room for macOS. The release is Developer ID signed and Apple-notarized.
 
@@ -20,7 +20,7 @@ No separate Steam client, Steam login, CrossOver, Wine, Docker, Homebrew, or Ros
 
 ## Get Started
 
-1. Download and unzip **Enshrouded-Server-Manager-for-Mac.zip**. Open the app and choose **Install & Open** to install it in Applications. macOS may show its normal first-open confirmation.
+1. Download **Enshrouded-Server-Manager-for-Mac.zip** from the [latest release](https://github.com/GlacianNex/enshrouded-mac-server/releases/latest) and unzip it into a fresh folder. Open the app and choose **Install & Open** to install it in Applications. macOS may show its normal first-open confirmation.
 2. Choose **Set Up Server**. Enter a server name and different player/admin passwords, each at least eight characters. Optionally choose an existing world to import.
 3. Choose **Install & Set Up**. The app prepares the environment and downloads the latest public server. First setup takes time to download files and build compatibility tools. Leave the manager open.
 4. Forward **UDP 15637** on your router to this Mac. Allow incoming traffic if your firewall asks. Each additional server needs its own forwarded UDP port.
