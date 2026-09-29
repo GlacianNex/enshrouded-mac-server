@@ -1,0 +1,257 @@
+--- a/pkg/portfwd/client.go
++++ b/pkg/portfwd/client.go
+@@ -8,6 +8,7 @@
+ 	"errors"
+ 	"fmt"
+ 	"net"
++	"sync"
+ 	"sync/atomic"
+ 	"time"
+ 
+@@ -81,6 +82,15 @@
+ 	// rxBuf holds bytes received from the stream that did not fit in the
+ 	// buffer passed to the previous Read call.
+ 	rxBuf []byte
++
++	// UDPProxy refreshes the read deadline for both sent and received packets.
++	// A gRPC stream has no socket deadline, so expire idle UDP streams explicitly.
++	// Otherwise every client source port consumes a stream forever and eventually
++	// exhausts the guest agent's concurrent-stream limit.
++	deadlineMu         sync.Mutex
++	deadlineTimer      *time.Timer
++	deadlineGeneration uint64
++	deadlineClosed     bool
+ }
+ 
+ var _ net.Conn = (*GrpcClientRW)(nil)
+@@ -114,13 +124,13 @@
+ func (g *GrpcClientRW) Close() error {
+ 	logrus.Debugf("closing GrpcClientRW for id: %s", g.id)
+ 	err := g.stream.CloseSend()
+-	g.cancel()
++	g.cancelStream()
+ 	return err
+ }
+ 
+ func (g *GrpcClientRW) CloseRead() error {
+ 	logrus.Debugf("closing read GrpcClientRW for id: %s", g.id)
+-	g.cancel()
++	g.cancelStream()
+ 	return nil
+ }
+ 
+@@ -145,8 +155,48 @@
+ 	return nil
+ }
+ 
+-func (g *GrpcClientRW) SetReadDeadline(_ time.Time) error {
+-	return nil
++func (g *GrpcClientRW) SetReadDeadline(deadline time.Time) error {
++	if g.protocol != "udp" {
++		return nil
++	}
++	g.deadlineMu.Lock()
++	defer g.deadlineMu.Unlock()
++	g.deadlineGeneration++
++	generation := g.deadlineGeneration
++	if g.deadlineTimer != nil {
++		g.deadlineTimer.Stop()
++		g.deadlineTimer = nil
++	}
++	if g.deadlineClosed || deadline.IsZero() {
++		return nil
++	}
++	g.deadlineTimer = time.AfterFunc(time.Until(deadline), func() {
++		g.expireUDPDeadline(generation)
++	})
++	return nil
++}
++
++func (g *GrpcClientRW) expireUDPDeadline(generation uint64) {
++	g.deadlineMu.Lock()
++	defer g.deadlineMu.Unlock()
++	// Stop cannot retract an already-running callback. A superseded timer
++	// must never cancel traffic whose deadline was refreshed or cleared.
++	if !g.deadlineClosed && generation == g.deadlineGeneration {
++		g.deadlineClosed = true
++		g.deadlineTimer = nil
++		g.cancel()
++	}
++}
++
++func (g *GrpcClientRW) cancelStream() {
++	g.deadlineMu.Lock()
++	defer g.deadlineMu.Unlock()
++	g.deadlineClosed = true
++	if g.deadlineTimer != nil {
++		g.deadlineTimer.Stop()
++		g.deadlineTimer = nil
++	}
++	g.cancel()
+ }
+ 
+ func (g *GrpcClientRW) SetWriteDeadline(_ time.Time) error {
+--- /dev/null
++++ b/pkg/portfwd/client_udp_deadline_test.go
+@@ -0,0 +1,161 @@
++// SPDX-FileCopyrightText: Copyright The Lima Authors
++// SPDX-License-Identifier: Apache-2.0
++
++package portfwd
++
++import (
++	"context"
++	"sync"
++	"testing"
++	"time"
++
++	"github.com/lima-vm/lima/v2/pkg/guestagent/api"
++)
++
++type deadlineTestStream struct {
++	api.GuestService_TunnelClient
++	ctx context.Context
++}
++
++func (s *deadlineTestStream) Recv() (*api.TunnelMessage, error) {
++	<-s.ctx.Done()
++	return nil, s.ctx.Err()
++}
++func (s *deadlineTestStream) CloseSend() error { return nil }
++
++func deadlineClient(t *testing.T, protocol string) (*GrpcClientRW, context.Context) {
++	t.Helper()
++	ctx, cancel := context.WithCancel(context.Background())
++	t.Cleanup(cancel)
++	return &GrpcClientRW{protocol: protocol, cancel: cancel, stream: &deadlineTestStream{ctx: ctx}}, ctx
++}
++func assertLive(t *testing.T, ctx context.Context) {
++	t.Helper()
++	if ctx.Err() != nil {
++		t.Fatal("stream canceled before its active deadline")
++	}
++}
++func assertCanceled(t *testing.T, ctx context.Context) {
++	t.Helper()
++	select {
++	case <-ctx.Done():
++	case <-time.After(2 * time.Second):
++		t.Fatal("idle UDP stream was not canceled")
++	}
++}
++func TestUDPReadDeadlineUnblocksRead(t *testing.T) {
++	g, ctx := deadlineClient(t, "udp")
++	readDone := make(chan error, 1)
++	go func() { _, err := g.Read(make([]byte, 64)); readDone <- err }()
++	if err := g.SetReadDeadline(time.Now().Add(10 * time.Millisecond)); err != nil {
++		t.Fatal(err)
++	}
++	assertCanceled(t, ctx)
++	select {
++	case err := <-readDone:
++		if err == nil {
++			t.Fatal("Read did not report canceled stream")
++		}
++	case <-time.After(2 * time.Second):
++		t.Fatal("Read remained blocked after timeout")
++	}
++}
++func TestUDPDeadlineRefreshRejectsOldCallback(t *testing.T) {
++	g, ctx := deadlineClient(t, "udp")
++	_ = g.SetReadDeadline(time.Now().Add(time.Hour))
++	old := g.deadlineGeneration
++	_ = g.SetReadDeadline(time.Now().Add(2 * time.Hour))
++	g.expireUDPDeadline(old) // callback already queued when timer was stopped
++	assertLive(t, ctx)
++	g.expireUDPDeadline(g.deadlineGeneration)
++	assertCanceled(t, ctx)
++}
++func TestUDPDeadlineClearRejectsOldCallback(t *testing.T) {
++	g, ctx := deadlineClient(t, "udp")
++	_ = g.SetReadDeadline(time.Now().Add(time.Hour))
++	old := g.deadlineGeneration
++	_ = g.SetReadDeadline(time.Time{})
++	g.expireUDPDeadline(old)
++	assertLive(t, ctx)
++	if g.deadlineTimer != nil {
++		t.Fatal("cleared deadline retained timer")
++	}
++	_ = g.SetReadDeadline(time.Now().Add(-time.Second))
++	assertCanceled(t, ctx)
++}
++func TestUDPCloseCleansDeadline(t *testing.T) {
++	for _, closeRead := range []bool{false, true} {
++		g, ctx := deadlineClient(t, "udp")
++		_ = g.SetReadDeadline(time.Now().Add(time.Hour))
++		if closeRead {
++			_ = g.CloseRead()
++		} else {
++			_ = g.Close()
++		}
++		assertCanceled(t, ctx)
++		_ = g.SetReadDeadline(time.Now().Add(time.Hour))
++		if g.deadlineTimer != nil || !g.deadlineClosed {
++			t.Fatal("closed connection retained timer")
++		}
++	}
++}
++func TestTCPReadDeadlineUnchanged(t *testing.T) {
++	g, ctx := deadlineClient(t, "tcp")
++	_ = g.SetReadDeadline(time.Now().Add(-time.Hour))
++	assertLive(t, ctx)
++	if g.deadlineTimer != nil {
++		t.Fatal("TCP connection acquired UDP timer")
++	}
++}
++func TestUDPConcurrentDeadlineAndClose(t *testing.T) {
++	g, ctx := deadlineClient(t, "udp")
++	var workers sync.WaitGroup
++	for n := 0; n < 8; n++ {
++		workers.Add(1)
++		go func() {
++			defer workers.Done()
++			for i := 0; i < 100; i++ {
++				_ = g.SetReadDeadline(time.Now().Add(time.Hour))
++				_ = g.SetReadDeadline(time.Time{})
++			}
++		}()
++	}
++	_ = g.CloseRead()
++	workers.Wait()
++	assertCanceled(t, ctx)
++	if g.deadlineTimer != nil {
++		t.Fatal("concurrent close retained timer")
++	}
++}
++
++// Exercise the real gRPC connection, including cancellation propagation to the
++// guest. Merely timing out the local Read would still leak a guest stream.
++func TestUDPIdleDeadlineClosesGRPCStream(t *testing.T) {
++	tunnelDone := make(chan error, 1)
++	client := newTestGuestAgentClient(t, &testGuestService{tunnelDone: tunnelDone})
++	defer client.Close()
++	dial := DialContextToGRPCTunnel(client)
++	for i := 0; i < 20; i++ {
++		conn, err := dial(t.Context(), "udp", "127.0.0.1:15637")
++		if err != nil {
++			t.Fatal(err)
++		}
++		_ = conn.SetReadDeadline(time.Now().Add(10 * time.Millisecond))
++		readDone := make(chan error, 1)
++		go func() { _, err := conn.Read(make([]byte, 64)); readDone <- err }()
++		select {
++		case err := <-readDone:
++			if err == nil {
++				t.Fatal("idle read unexpectedly succeeded")
++			}
++		case <-time.After(2 * time.Second):
++			t.Fatal("idle read did not expire")
++		}
++		select {
++		case <-tunnelDone:
++		case <-time.After(2 * time.Second):
++			t.Fatal("guest retained the idle stream")
++		}
++		_ = conn.Close()
++	}
++}

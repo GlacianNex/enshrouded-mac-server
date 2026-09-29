@@ -4,7 +4,7 @@ The manager source is MIT licensed. The Enshrouded icon in `Assets/Enshrouded.pn
 
 ## Bundled
 
-- **Lima 2.2.0** — Apache-2.0. [Source and notices](https://github.com/lima-vm/lima/tree/v2.2.0). Upstream licenses and documentation are retained in the app under `Contents/Resources/Lima/share/doc/lima`. The unused macOS guest payload is omitted; this app uses Linux guests.
+- **Lima 2.2.0 with the ESM UDP idle-timeout patch** — Apache-2.0. [Source and notices](https://github.com/lima-vm/lima/tree/v2.2.0). Upstream licenses and documentation are retained in the app under `Contents/Resources/Lima/share/doc/lima`. The host executable is rebuilt with `scripts/lima-udp-idle.patch` to release idle UDP forwarding streams; its build and regression tests are in `scripts/patch-lima.sh`. The unused macOS guest payload is omitted; this app uses Linux guests.
 
 ## Downloaded During Setup
 

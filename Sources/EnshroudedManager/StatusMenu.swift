@@ -15,14 +15,13 @@ import EnshroudedCore
         super.init()
         menu.autoenablesItems = false; menu.delegate = self; item.menu = menu
         refreshStatus()
-        // Default run-loop mode deliberately pauses status-button changes while
-        // AppKit tracks a menu. Models continue monitoring independently.
-        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+        // Update only the status button while tracking; never rebuild menu rows.
+        let statusTimer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refreshStatus() }
         }
+        RunLoop.main.add(statusTimer, forMode: .common); timer = statusTimer
     }
     func refreshStatus() {
-        guard !tracking else { return }
         item.button?.image = MenuBranding.image(running: fleet.models.contains { $0.state == "RUNNING" }, busy: fleet.models.contains { $0.busy })
         item.button?.title = " Enshrouded · \(fleet.menuValue)"
         item.button?.font = .monospacedDigitSystemFont(ofSize: 13, weight: .medium)
@@ -70,7 +69,7 @@ import EnshroudedCore
             add("Update Enshrouded Server…", to: menu, enabled: !busy) { self.fleet.updateAllServers() }
             menu.addItem(.separator())
         }
-        for server in fleet.models {
+        for server in fleet.configuredModels {
             let submenu = NSMenu(); submenu.autoenablesItems = false
             let count = server.stopped ? "0 players" : server.playerCount.map { "\($0) players" } ?? "Players: checking…"
             let row = NSMenuItem(title: "\(server.name) — \(server.label) · \(count)", action: nil, keyEquivalent: "")
@@ -85,6 +84,7 @@ import EnshroudedCore
             add("Start Server at Login", to: submenu, enabled: !server.busy, checked: server.automation.startAtLogin) {
                 var value = server.automation; value.startAtLogin.toggle(); server.saveAutomation(value)
             }
+            add("Delete Server…", to: submenu, enabled: !busy) { self.fleet.deleteServer(server) }
             add("Server Management…", to: submenu) { self.open(server) }
         }
         menu.addItem(.separator())
@@ -98,6 +98,7 @@ import EnshroudedCore
         menu.addItem(.separator())
         add("New Server…", to: menu, enabled: !busy) { self.fleet.showNewServer = true; self.showManagement(); NSApp.activate(ignoringOtherApps: true) }
         menu.addItem(.separator())
+        add("Uninstall Server Files…", to: menu, enabled: !busy) { self.fleet.uninstallServerFiles() }
         add("Quit Manager (Servers Keep Running)", to: menu, enabled: !busy) { NSApp.terminate(nil) }
     }
 }

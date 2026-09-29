@@ -49,16 +49,16 @@ import EnshroudedCore
     private var memorySeries = PerformanceHistory()
     private var segment = 0
     private var lastPeerIdentity: String?
-    private var lastStatsIdentity: String?
+    private var speedSeries = ServerSpeedHistory()
     private var lastLogSize: UInt64 = 0
     private var assertion: IOPMAssertionID = 0
     private let preferences: UserDefaults
-    init(homeOverride: URL? = nil, automaticStartup: Bool = true) {
+    init(homeOverride: URL? = nil, automaticStartup: Bool = true, sharedDownloads: URL? = nil) {
         startupHandled = !automaticStartup
         let env = ProcessInfo.processInfo.environment
         let home = homeOverride ?? (env["ESM_HOME"] ?? UserDefaults.standard.string(forKey: "serverHome")).map { URL(fileURLWithPath: $0) } ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/EnshroudedServer")
         let resources = env["ESM_RESOURCES"].map { URL(fileURLWithPath: $0) } ?? Bundle.main.resourceURL!
-        engine = Engine(home: home, resources: resources)
+        engine = Engine(home: home, resources: resources, sharedDownloads: sharedDownloads)
         preferences = UserDefaults(suiteName: "com.glaciannex.enshrouded-manager.\(home.path.data(using: .utf8)!.base64EncodedString())")!
         keepAwake = preferences.object(forKey: "keepAwake") as? Bool ?? true
         activity = engine.activityTail()
@@ -88,8 +88,14 @@ import EnshroudedCore
         return "\(snapshot.peers.count) reported connection\(snapshot.peers.count == 1 ? "" : "s")"
     }
     var currentUpdateRate: Double? {
-        guard state == "RUNNING", let lastStats, Date().timeIntervalSince(lastStats) <= 90 else { return nil }
-        return snapshot.updateRate
+        guard state == "RUNNING" else { return nil }
+        return speedSeries.current(at: Date())
+    }
+    var speedSummary: String {
+        if let value = currentUpdateRate { return "Latest minute average: " + String(format: "%.1f updates/s", value) }
+        if state != "RUNNING" { return "Readings resume when the server is running." }
+        if let value = speedSeries.lastValue { return String(format: "Last report: %.1f updates/s · waiting for a fresh report", value) }
+        return "Waiting for the first minute report…"
     }
     func loadSettings() {
         if let value = try? engine.readSettings() { settings = value }
@@ -102,7 +108,8 @@ import EnshroudedCore
         Task {
             do {
                 let result = try await Task.detached { () -> (String, LogTailSnapshot, RuntimeMetrics?, [WorldBackup], Int?) in
-                    let state = try engine.status()
+                    let observedState = try engine.status()
+                    let state = observedState != "RUNNING" && FileManager.default.fileExists(atPath: engine.home.appendingPathComponent("needs-setup").path) ? "NOT_INSTALLED" : observedState
                     let metrics = state == "RUNNING" ? try? engine.metrics() : nil
                     return (state, engine.logTailSnapshot(), metrics, engine.backups(), state == "RUNNING" ? metrics?.playerCount : 0)
                 }.value
@@ -112,6 +119,8 @@ import EnshroudedCore
                 localAddresses = ConnectionInfo.localAddresses()
                 let parsed = result.1.parsed
                 if let ip = parsed.publicIP { publicAddress = ip }
+                speedSeries.observe(result.1, running: state == "RUNNING", invocation: metrics?.invocation, at: now)
+                updateHistory = speedSeries.points; lastStats = speedSeries.lastReport
                 if state == "RUNNING", let m = metrics, m.active {
                     if let old = lastCounter, old.1.invocation == m.invocation, now.timeIntervalSince(old.0) < 20, m.cpuSeconds >= old.1.cpuSeconds {
                         // 100% is all four configured vCPUs, rather than one core.
@@ -121,18 +130,13 @@ import EnshroudedCore
                     memorySeries.record(m.memoryBytes / 1_073_741_824, at: now, segment: segment)
                     memoryHistory = memorySeries.points
                     lastCounter = (now, m)
-                    if result.1.fileSize < lastLogSize { lastStatsIdentity = nil; lastPeerIdentity = nil }
+                    if result.1.fileSize < lastLogSize { lastPeerIdentity = nil }
                     lastLogSize = result.1.fileSize
-                    if let identity = result.1.identityFor(relativeEnd: parsed.statsReportEnd).map({ m.invocation + ":" + $0 }), identity != lastStatsIdentity,
-                       let value = parsed.updateRate {
-                        lastStatsIdentity = identity
-                        lastStats = now; updateHistory.append(.init(date: now, value: value, segment: segment))
-                    }
                     if let identity = result.1.identityFor(relativeEnd: parsed.peerReportEnd).map({ m.invocation + ":" + $0 }), identity != lastPeerIdentity {
                         lastPeerIdentity = identity; lastPeers = now
                         for peer in parsed.peers { pingHistory[peer.id, default: []].append(.init(date: now, value: peer.ping, segment: segment)) }
                     }
-                } else { lastCounter = nil; lastStats = nil; lastPeers = nil }
+                } else { lastCounter = nil; lastPeers = nil }
                 snapshot = parsed
                 let cutoff = now.addingTimeInterval(-PerformanceHistory.duration)
                 memoryHistory.removeAll { $0.date < cutoff }; cpuHistory.removeAll { $0.date < cutoff }; updateHistory.removeAll { $0.date < cutoff }
@@ -140,7 +144,7 @@ import EnshroudedCore
                 lastCheck = now
                 updateSleepAssertion()
             } catch {
-                metrics = nil; playerCount = nil; lastCounter = nil; lastStats = nil; lastPeers = nil; self.error = "Status check failed: " + error.localizedDescription
+                metrics = nil; playerCount = nil; lastCounter = nil; lastPeers = nil; self.error = "Status check failed: " + error.localizedDescription
                 // Preserve an existing sleep assertion during a transient monitoring failure.
             }
             polling = false

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.5 (Candidate)
+
+- Fix UDP forwarding exhaustion and restart environments during manager upgrades so updated networking tools take effect.
+- Keep the menu-bar light live while its dropdown is open; preserve speed readings across temporary metrics failures.
+- Make Open Server Folder a button; move full server-file uninstall into the global menu.
+- Add per-server deletion with saved-data archives and reusable installations; share setup downloads between servers.
+
 ## 0.1.4 — Candidate
 
 Fix missing runtime helper files during manager updates with a running VM. Keep helper generations immutable, reopen the installed manager after a failed update, and retain installer diagnostics. Includes the 0.1.3 candidate changes.

@@ -7,7 +7,6 @@ struct ManagementView: View {
     @State private var settingsOpen = false
     @State private var logsOpen = false
     @State private var setupOpen = false
-    @State private var uninstallOpen = false
     var removeServer: () -> Void = {}
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -53,11 +52,7 @@ struct ManagementView: View {
                 Button("Server Settings") { settingsOpen = true }.disabled(model.state == "NOT_INSTALLED" || model.busy)
                 Button("Open Log") { logsOpen = true }
                 Button("Logs Folder") { NSWorkspace.shared.open(model.engine.data.appendingPathComponent("logs")) }
-                Menu("Server Files") {
-                    Button("Open Server Folder") { NSWorkspace.shared.open(model.engine.data.appendingPathComponent("server")) }
-                    Button("Uninstall Server Files…") { uninstallOpen = true }.disabled(model.busy || model.state == "NOT_INSTALLED")
-                    Button("Move Server to Recovery…", action: removeServer).disabled(!model.canEdit)
-                }
+                Button("Open Server Folder") { NSWorkspace.shared.open(model.engine.data.appendingPathComponent("server")) }
             }.font(.system(size: 11)).controlSize(.small)
             HStack {
                 Text(model.busy ? model.operationTitle : model.automationMessage).lineLimit(1)
@@ -69,16 +64,6 @@ struct ManagementView: View {
         .sheet(isPresented: $settingsOpen) { SettingsView(model: model, draft: model.settings) }
         .sheet(isPresented: $setupOpen) { SetupView(model: model, draft: model.settings) }
         .sheet(isPresented: $logsOpen) { LogsView(model: model) }
-        .confirmationDialog("Uninstall This Server’s Files?", isPresented: $uninstallOpen, titleVisibility: .visible) {
-            Button("Stop & Uninstall Server Files", role: .destructive) {
-                model.operation("Uninstalling server files…") { engine in
-                    try engine.uninstallServerFiles { chunk in Task { @MainActor in model.recordActivity(chunk) } }
-                }
-                logsOpen = true
-            }
-        } message: {
-            Text("Stops this server and removes its downloaded server files, VM, Wine, Box64, download tools, and setup cache. Keeps worlds, settings, backups, and the manager app. Other servers are unchanged. Reinstall later with Set Up Server.")
-        }
         .confirmationDialog("Update or repair the Enshrouded server?", isPresented: $model.showMaintenance, titleVisibility: .visible) {
             Button("Update Enshrouded Server") { model.run("update"); logsOpen = true }
         } message: { Text("Running servers must be empty. The manager saves and stops, backs up the world and configuration, then downloads and validates the latest files from Valve. A previously running server restarts; a stopped server stays stopped.") }
@@ -129,8 +114,8 @@ struct PerformanceView: View {
                     stat("MEMORY USED", model.metrics.map { String(format: "%.2f GB", $0.memoryBytes / 1_073_741_824) } ?? "—")
                     stat("LAST SAVE", model.snapshot.lastSaveCompleted ? "Completed in log" : "No completion in recent log")
                 }.padding(.vertical, 4).layoutPriority(1)
-                MetricGraph(title: "Server Speed (updates per second)", subtitle: "How often the game world advances · latest minute average: " + (model.currentUpdateRate.map { String(format: "%.1f", $0) } ?? "—"), points: model.updateHistory, color: .blue, fillsAvailableSpace: true, maximumGap: 90)
-                    .help("Simulation speed, not your game's graphics FPS. Enshrouded publishes this average about once a minute; five-second simulation averages are unavailable.")
+                MetricGraph(title: "Server Speed (updates per second)", subtitle: model.speedSummary, points: model.updateHistory, color: .blue, fillsAvailableSpace: true, maximumGap: ServerSpeedHistory.freshness)
+                    .help("Simulation speed, not your game's graphics FPS. Enshrouded publishes this average about once a minute; five-second simulation averages are unavailable. Gaps indicate missing reports or a server restart.")
                 MetricGraph(title: "Server Memory (GB)", subtitle: "Memory used to run this server · 5-second averages", points: model.memoryHistory, color: .blue, fillsAvailableSpace: true, maximumGap: 7.5)
                 Text("Last 3 hours · memory averaged over 5 seconds. Server speed uses Enshrouded’s minute reports.").font(.system(size: 10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).layoutPriority(1)
             }.padding(14).frame(maxWidth: .infinity, maxHeight: .infinity)

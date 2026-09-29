@@ -61,6 +61,7 @@ final class InstallationTests: XCTestCase {
             let script = """
             #!/bin/sh
             if [ "$1" = list ]; then echo Running
+            elif [ "$1" = stop ]; then touch "$LIMA_HOME/../environment-stopped"
             elif [ "$5" = status ]; then echo RUNNING
             elif [ "$5" = stop ]; then touch "$LIMA_HOME/../stop-requested"; exit \(stopFails ? 9 : 0)
             else echo 'Unexpected call, including player query' >&2; exit 7
@@ -74,6 +75,7 @@ final class InstallationTests: XCTestCase {
                 _ = try ManagerInstallation.replaceManagingServers(new, destination: old, engines: [engine])
             }
             XCTAssertTrue(FileManager.default.fileExists(atPath: engine.home.appendingPathComponent("stop-requested").path))
+            XCTAssertEqual(FileManager.default.fileExists(atPath: engine.home.appendingPathComponent("environment-stopped").path), !stopFails)
             XCTAssertEqual(try BuildInfo.read(app: old).build, stopFails ? "1" : "2")
             XCTAssertEqual(FileManager.default.fileExists(atPath: engine.home.appendingPathComponent("resume-after-manager-update").path), !stopFails)
         }

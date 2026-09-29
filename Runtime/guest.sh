@@ -16,10 +16,20 @@ stage() {
   printf '[ESM_SETUP] {"stage":"%s","message":"%s"}\n' "$1" "$2"
 }
 fetch() {
-  python3 "$RUNTIME_DIR/download.py" "$1" "$2" "$3" "$4"
+  local cached="$3"
+  if test -d /mnt/esm-downloads/components; then
+    cached="/mnt/esm-downloads/components/$2"
+  fi
+  python3 "$RUNTIME_DIR/download.py" "$1" "$2" "$cached" "$4"
+  if test "$cached" != "$3"; then cp --reflink=auto "$cached" "$3"; fi
 }
 prepare() {
   test ! -f "$ROOT/ready-v1" || return 0
+  if test -d /mnt/esm-downloads/packages; then
+    # Share downloaded packages, keeping each VM's installed system independent.
+    sudo mkdir -p /etc/apt/apt.conf.d
+    printf 'Dir::Cache::archives "/mnt/esm-downloads/packages";\nBinary::apt::APT::Keep-Downloaded-Packages "true";\n' | sudo tee /etc/apt/apt.conf.d/99-esm-cache >/dev/null
+  fi
   stage packages 'Downloading and installing Ubuntu system packages…'
   sudo env DEBIAN_FRONTEND=noninteractive apt-get update
   sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential cmake curl ca-certificates unzip xz-utils xvfb xauth python3 libx11-6 libxext6 libxinerama1 libxcomposite1 libxi6 libxkbregistry0 libxcursor1 libxfixes3 libxrandr2 libxrender1 libegl1 libfreetype6 libfontconfig1 libasound2t64 libpulse0 libgnutls30t64 libgl1 libvulkan1 libunwind8 libicu74

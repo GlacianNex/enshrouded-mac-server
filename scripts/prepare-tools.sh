@@ -11,3 +11,4 @@ if ! test -f "$archive" || ! echo "$sha  $archive" | shasum -a 256 -c --status; 
 fi
 mkdir -p .tools/lima
 tar -xzf "$archive" -C .tools/lima
+bash scripts/patch-lima.sh

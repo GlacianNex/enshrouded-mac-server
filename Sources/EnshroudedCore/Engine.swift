@@ -11,7 +11,8 @@ public struct EngineError: LocalizedError {
 public struct Engine {
     public let home: URL
     public let resources: URL
-    public init(home: URL, resources: URL) { self.home = home; self.resources = resources }
+    public let sharedDownloads: URL?
+    public init(home: URL, resources: URL, sharedDownloads: URL? = nil) { self.home = home; self.resources = resources; self.sharedDownloads = sharedDownloads }
     public var data: URL { home.appendingPathComponent("data") }
     public var lima: URL { resources.appendingPathComponent("Lima/bin/limactl") }
     public var serverConfig: URL { data.appendingPathComponent("server/enshrouded_server.json") }
@@ -25,7 +26,8 @@ public struct Engine {
         return String(data: try! encoder.encode(value), encoding: .utf8)!
     }
     public func vmConfiguration(image: URL? = nil) -> String {
-        """
+        let sharedMount = sharedDownloads.map { "- location: \(Self.yamlString($0.path))\n  mountPoint: /mnt/esm-downloads\n  writable: true\n" } ?? ""
+        return """
         vmType: vz
         arch: aarch64
         cpus: 4
@@ -43,7 +45,7 @@ public struct Engine {
         - location: \(Self.yamlString(data.path))
           mountPoint: /mnt/esm-data
           writable: true
-        containerd:
+        \(sharedMount)containerd:
           system: false
           user: false
         vmOpts:
@@ -172,7 +174,9 @@ public struct Engine {
         defer { close(fd) }
         guard flock(fd, LOCK_EX | LOCK_NB) == 0 else { throw EngineError("Another server operation is already running") }
         defer { flock(fd, LOCK_UN) }
-        try performLocked(action, output: output)
+        if action == "install" || action == "update" {
+            try withSharedDownloads { try performLocked(action, output: output) }
+        } else { try performLocked(action, output: output) }
     }
 
     public func scheduledBackup() throws {
@@ -231,7 +235,8 @@ public struct Engine {
                 let disk = try fm.attributesOfFileSystem(forPath: home.path)
                 guard (disk[.systemFreeSize] as? NSNumber)?.uint64Value ?? 0 >= 30 * 1_073_741_824 else { throw EngineError("Free at least 30 GB before setting up the server") }
             }
-            let image = home.appendingPathComponent("cache/ubuntu.img")
+            try prepareSharedDownloads(output: output)
+            let image = sharedDownloads?.appendingPathComponent("ubuntu.img") ?? home.appendingPathComponent("cache/ubuntu.img")
             if !fm.fileExists(atPath: home.appendingPathComponent("lima/engine/lima.yaml").path) {
                 try SetupDownload.fetch(Self.environmentImage, destination: image, sha256: Self.environmentDigest, output: output)
             }
@@ -245,6 +250,8 @@ public struct Engine {
                 try command(["start", "--tty=false", "engine"], output: output)
             }
             try command(["shell", "engine", "bash", runtimeGuestScript, "install"], output: output)
+            try publishSharedServerFiles()
+            try? fm.removeItem(at: home.appendingPathComponent("needs-setup"))
             if !fm.fileExists(atPath: serverConfig.path) {
                 try writeSettings(name: "Enshrouded Server", password: UUID().uuidString, adminPassword: UUID().uuidString)
             }

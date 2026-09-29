@@ -97,20 +97,25 @@ extension ManagerInstallation {
         do {
             return try replace(source, destination: destination) {
                 output("Checking running servers…\n")
-                let active = try engines.filter { try $0.status() == "RUNNING" }
+                let states = try engines.map { ($0, try $0.status()) }
                 output("Closing the previous manager…\n")
                 try closeManager()
-                for engine in active {
+                for (engine, state) in states where state == "RUNNING" || state == "INSTALLED" {
                     output("Saving and stopping server at \(engine.home.path)…\n")
-                    try engine.perform("stop", output: output); stopped.append(engine)
-                    try Data("resume\n".utf8).write(to: engine.home.appendingPathComponent("resume-after-manager-update"), options: .atomic)
+                    if state == "RUNNING" {
+                        stopped.append(engine)
+                        try Data("resume\n".utf8).write(to: engine.home.appendingPathComponent("resume-after-manager-update"), options: .atomic)
+                    }
+                    // Stop the host agent too: an app replacement cannot update
+                    // networking code in a VM process that is already running.
+                    try engine.perform("shutdown", output: output)
                 }
             }
         } catch {
             var failures: [String] = []
             for engine in stopped {
                 do {
-                    try engine.perform("start", output: output)
+                    if try engine.status() != "RUNNING" { try engine.perform("start", output: output) }
                     try? FileManager.default.removeItem(at: engine.home.appendingPathComponent("resume-after-manager-update"))
                 } catch { failures.append(engine.home.lastPathComponent) }
             }
