@@ -3,7 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 channel="${RELEASE_CHANNEL:-stable}"
 [[ "$channel" == stable || "$channel" == experimental ]] || { echo 'RELEASE_CHANNEL must be stable or experimental' >&2; exit 1; }
-version="${VERSION:-0.1.0}"
+version="${VERSION:-0.1.1}"
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'VERSION must use major.minor.patch' >&2; exit 1; }
 build_version="$(date -u +%y%m%d.%H%M.%S)"
 build_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -59,9 +59,11 @@ else
     codesign --force --sign - "$app"
 fi
 codesign --verify --deep --strict "$app"
-ditto -c -k --keepParent "$app" "$PWD/dist/Enshrouded-Server-Manager-for-Mac.zip"
+ditto -c -k --norsrc --keepParent "$app" "$PWD/dist/Enshrouded-Server-Manager-for-Mac.zip"
 destination="$PWD/dist/Enshrouded Server Manager.app"
 if [ -d "$destination" ]; then mv "$destination" "$staging/previous.app"; fi
 mv "$app" "$destination"
 printf 'Built %s\n' "$destination"
 (cd dist && shasum -a 256 Enshrouded-Server-Manager-for-Mac.zip > SHA256SUMS.txt)
+
+bash scripts/verify-archive.sh

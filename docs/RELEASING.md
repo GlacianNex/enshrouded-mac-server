@@ -8,7 +8,7 @@ Update the version default in `scripts/build.sh`, changelog, and release notes, 
 
 ```sh
 swift test
-VERSION=0.1.0 SIGNING_IDENTITY='Developer ID Application: YOUR NAME (TEAMID)' bash scripts/build.sh
+VERSION=0.1.1 SIGNING_IDENTITY='Developer ID Application: YOUR NAME (TEAMID)' bash scripts/build.sh
 NOTARY_PROFILE=ESM_NOTARY bash scripts/notarize.sh
 ```
 
@@ -18,7 +18,9 @@ The scripts create `dist/Enshrouded-Server-Manager-for-Mac.zip` and `dist/SHA256
 
 The notarization script requires Apple's Accepted status, staples and validates the ticket, checks Gatekeeper, and recreates the ZIP and checksum. Diagnostics stay in `dist/notarization`. If submission times out, inspect the existing submission before resubmitting.
 
-Extract the final ZIP into a fresh directory and run:
+Both scripts reject ZIPs containing AppleDouble (`._`) metadata files and verify signatures after extracting with both `ditto` and `unzip`. The notarization script also verifies the extracted tickets and Gatekeeper acceptance. Keep `--norsrc` on every ZIP creation command: metadata sidecars can become unsigned files inside the app when extracted.
+
+For a manual check, extract the final ZIP into a fresh directory and run:
 
 ```sh
 codesign --verify --deep --strict '/path/to/Enshrouded Server Manager.app'

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1
+
+Fix the “app is damaged” error after extracting the download. Release ZIPs now omit macOS metadata sidecar files that could invalidate the app signature. Packaging checks verify both metadata-aware and ordinary ZIP extraction.
+
 ## 0.1.0
 
 First public release of Enshrouded Server Manager for Mac.
