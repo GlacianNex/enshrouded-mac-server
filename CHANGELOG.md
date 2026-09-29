@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.4 — Candidate
+
+Fix missing runtime helper files during manager updates with a running VM. Keep helper generations immutable, reopen the installed manager after a failed update, and retain installer diagnostics. Includes the 0.1.3 candidate changes.
+
 ## 0.1.3 — Candidate
 
 Explain download components and disk-space requirements before setup. Show installation steps, elapsed time, reported bytes and progress, and the server-data destination. Add server-file uninstall that removes the VM and compatibility tools while preserving worlds, settings and backups.

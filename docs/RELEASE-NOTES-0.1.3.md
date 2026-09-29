@@ -4,6 +4,8 @@ Candidate · Changes since 0.1.2
 
 ## What Changed
 
+- Fix a running-VM update failure where replaced helper files temporarily appeared missing. Helpers now use immutable version folders. Failed installations reopen the installed manager and save installer diagnostics.
+
 - Match Valheim’s manager-update menu with an update badge, version/check status, and a manual manager-update check. Checks run at launch and every five minutes; this is a menu indication, not a macOS notification banner.
 
 - Setup lists every component and its source before downloading.
@@ -17,3 +19,5 @@ Candidate · Changes since 0.1.2
 102 Swift tests and four offline HTTP download tests pass. Cases include truncated downloads, bad checksums, cached downloads, progress parsing, saved-data preservation, failed stops, failed VM deletion, and linked folders. A real component download verified streaming byte counts and SHA-256. An isolated native UI preview verified the component list, destination, and current-step progress using a fake runtime.
 
 Full fresh provisioning with these changes has not been repeated on another Mac. The public 0.1.2 release remains unchanged.
+
+A live VM probe reproduced the missing-file failure with host-side atomic replacement. Six reads across three immutable helper generations passed without restarting the VM or changing the running server.

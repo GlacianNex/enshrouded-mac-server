@@ -50,7 +50,7 @@ extension Engine {
                     if !["savegame", "enshrouded_server.json", "logs"].contains(entry.lastPathComponent) { try files.removeItem(at: entry) }
                 }
             }
-            for relative in ["runtime", "cache", "data/installed-manifest.txt", "internet-forward-v1", "resume-after-manager-update", "engine.yaml"] {
+            for relative in ["runtime", "runtime-version", "cache", "data/installed-manifest.txt", "internet-forward-v1", "resume-after-manager-update", "engine.yaml"] {
                 let path = home.appendingPathComponent(relative)
                 if files.fileExists(atPath: path.path) { try files.removeItem(at: path) }
             }

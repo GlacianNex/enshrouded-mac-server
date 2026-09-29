@@ -3,6 +3,7 @@ set -euo pipefail
 umask 077
 ROOT=/opt/esm
 DATA=/mnt/esm-data
+RUNTIME_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 export WINEPREFIX="$ROOT/prefix"
 export WINEDEBUG=-all
 export WINEDLLOVERRIDES="mscoree,mshtml="
@@ -15,7 +16,7 @@ stage() {
   printf '[ESM_SETUP] {"stage":"%s","message":"%s"}\n' "$1" "$2"
 }
 fetch() {
-  python3 /mnt/esm-runtime/download.py "$1" "$2" "$3" "$4"
+  python3 "$RUNTIME_DIR/download.py" "$1" "$2" "$3" "$4"
 }
 prepare() {
   test ! -f "$ROOT/ready-v1" || return 0
@@ -109,7 +110,7 @@ case "${1:-}" in
       --property=KillMode=control-group --property=TimeoutStopSec=infinity \
       --property="StandardOutput=append:$DATA/logs/server.log" \
       --property="StandardError=append:$DATA/logs/server.log" \
-      /bin/bash /mnt/esm-runtime/guest.sh run
+      /bin/bash "$RUNTIME_DIR/guest.sh" run
     for ((i=0;i<90;i++)); do
       if grep -q "'HostOnline' (up)" "$DATA/logs/server.log" 2>/dev/null; then echo 'Server reports online. Player connection still needs verification.'; exit 0; fi
       if ! sudo systemctl is-active --quiet esm-server; then tail -30 "$DATA/logs/server.log"; exit 1; fi
@@ -120,7 +121,7 @@ case "${1:-}" in
     ;;
   stop)
     if ! sudo systemctl is-active --quiet esm-server; then echo 'Server is stopped.'; exit 0; fi
-    python3 /mnt/esm-runtime/stop-server.py
+    python3 "$RUNTIME_DIR/stop-server.py"
     for ((i=0;i<120;i++)); do
       if ! sudo systemctl is-active --quiet esm-server; then echo 'Server stopped.'; exit 0; fi
       sleep 1

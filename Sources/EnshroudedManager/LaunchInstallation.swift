@@ -34,6 +34,9 @@ import EnshroudedCore
         }
         NSApp.setActivationPolicy(.accessory)
         NSApp.activate(ignoringOtherApps: true)
+        var managerWasClosed = false
+        let installLog = Engine(home: FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/Enshrouded Manager/Installer"), resources: Bundle.main.resourceURL!)
+        try? installLog.appendActivity("\nManager installation started: \(Date())\nSource: \(source.path)\n")
         do {
             _ = replacing ? try ManagerInstallation.validate(source, replacing: destination) : try BuildInfo.read(app: source)
             let alert = NSAlert()
@@ -58,7 +61,7 @@ import EnshroudedCore
             var result: Result<URL, Error>?
             DispatchQueue.global(qos: .userInitiated).async {
                 let outcome = Result {
-                    try ManagerInstallation.replaceManagingServers(source, destination: destination, engines: engines) {
+                    try ManagerInstallation.replaceManagingServers(source, destination: destination, engines: engines, output: { try? installLog.appendActivity($0) }) {
                         // AppKit can retain stale isTerminated values, especially
                         // during installer run loops. Capture kernel identities first.
                         var lifetimes: [ProcessLifetime] = []
@@ -66,7 +69,7 @@ import EnshroudedCore
                             for app in others {
                                 guard let lifetime = ProcessLifetime(pid: app.processIdentifier) else { continue }
                                 lifetimes.append(lifetime)
-                                _ = app.terminate()
+                                if app.terminate() { managerWasClosed = true }
                             }
                         }
                         try ManagerQuitWait.wait(lifetimes, timeout: 15)
@@ -77,22 +80,36 @@ import EnshroudedCore
             }
             while result == nil { RunLoop.current.run(until: Date().addingTimeInterval(0.1)) }
             _ = try result!.get()
-            let configuration = NSWorkspace.OpenConfiguration()
-            configuration.createsNewApplicationInstance = true
-            configuration.allowsRunningApplicationSubstitution = false
-            configuration.environment = ["ESM_RELAUNCH_FROM_PID": String(ProcessInfo.processInfo.processIdentifier)]
-            var completed = false
-            var failure: Error?
-            NSWorkspace.shared.openApplication(at: destination, configuration: configuration) { _, error in
-                DispatchQueue.main.async { failure = error; completed = true }
-            }
-            while !completed { RunLoop.current.run(until: Date().addingTimeInterval(0.1)) }
-            if let failure { throw failure }
+            try reopen(destination)
+            try? installLog.appendActivity("Manager replacement and relaunch completed.\n")
         } catch {
-            let alert = NSAlert(); alert.messageText = "Manager upgrade needs attention"
-            alert.informativeText = error.localizedDescription + "\nOpen the manager from Applications to continue."
+            try? installLog.appendActivity("Installation failed: \(error.localizedDescription)\n")
+            let alert = NSAlert(); alert.messageText = "Manager Update Could Not Finish"
+            alert.informativeText = error.localizedDescription + (managerWasClosed ? "\nThe installed manager will reopen when you close this message." : "\nThe installed manager has not been closed.")
             alert.addButton(withTitle: "OK"); alert.runModal()
+            if managerWasClosed {
+                do { try reopen(destination); try? installLog.appendActivity("Reopened the installed manager after failed update.\n") }
+                catch {
+                    try? installLog.appendActivity("Recovery launch failed: \(error.localizedDescription)\n")
+                    let recovery = NSAlert(); recovery.messageText = "Open the Manager from Applications"
+                    recovery.informativeText = "The manager could not reopen automatically. Your installation and server data are preserved."
+                    recovery.addButton(withTitle: "OK"); recovery.runModal()
+                }
+            }
         }
         return false
+    }
+    private static func reopen(_ destination: URL) throws {
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.createsNewApplicationInstance = true
+        configuration.allowsRunningApplicationSubstitution = false
+        configuration.environment = ["ESM_RELAUNCH_FROM_PID": String(ProcessInfo.processInfo.processIdentifier)]
+        var completed = false
+        var failure: Error?
+        NSWorkspace.shared.openApplication(at: destination, configuration: configuration) { _, error in
+            DispatchQueue.main.async { failure = error; completed = true }
+        }
+        while !completed { RunLoop.current.run(until: Date().addingTimeInterval(0.1)) }
+        if let failure { throw failure }
     }
 }

@@ -145,7 +145,9 @@ extension FleetModel {
             while models.contains(where: { $0.polling || $0.checkingRelease }) { try? await Task.sleep(for: .milliseconds(100)) }
             do {
                 let backup = try await Task.detached {
-                    try ManagerInstallation.replaceManagingServers(source, destination: destination, engines: engines)
+                    try ManagerInstallation.replaceManagingServers(source, destination: destination, engines: engines, output: { chunk in
+                        Task { @MainActor in self.selected.recordActivity(chunk) }
+                    })
                 }.value
                 selected.recordActivity("Previous manager retained at \(backup.path)\n")
                 let config = NSWorkspace.OpenConfiguration(); config.createsNewApplicationInstance = true

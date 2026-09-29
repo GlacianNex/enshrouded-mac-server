@@ -1,5 +1,6 @@
 import Foundation
 import Darwin
+import CryptoKit
 
 public struct EngineError: LocalizedError {
     public let message: String
@@ -99,7 +100,7 @@ public struct Engine {
         guard FileManager.default.fileExists(atPath: home.appendingPathComponent("lima/engine/lima.yaml").path) else { return "NOT_INSTALLED" }
         let list = try command(["list", "engine", "--format={{.Status}}"], timeout: 15, output: {_ in})
         guard list.trimmingCharacters(in: .whitespacesAndNewlines) == "Running" else { return "VM_STOPPED" }
-        return try command(["shell", "engine", "bash", "/mnt/esm-runtime/guest.sh", "status"], timeout: 15, output: {_ in}).trimmingCharacters(in: .whitespacesAndNewlines)
+        return try command(["shell", "engine", "bash", runtimeGuestScript, "status"], timeout: 15, output: {_ in}).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // Change only the application's game-port rule, preserving other VM settings.
@@ -114,7 +115,7 @@ public struct Engine {
         let current = try status()
         output("Enabling network access on UDP 15637…\n")
         if current == "RUNNING" {
-            try command(["shell", "engine", "bash", "/mnt/esm-runtime/guest.sh", "stop"], output: output)
+            try command(["shell", "engine", "bash", runtimeGuestScript, "stop"], output: output)
         }
         if current != "VM_STOPPED" {
             try command(["stop", "engine"], output: output)
@@ -125,18 +126,41 @@ public struct Engine {
         try Data("UDP 15637 enabled on all host IPv4 interfaces\n".utf8).write(to: marker, options: .atomic)
     }
 
+    var runtimeGuestScript: String {
+        let version = (try? String(contentsOf: home.appendingPathComponent("runtime-version"))) ?? ""
+        guard version.count == 64, version.allSatisfy({ "0123456789abcdef".contains($0) }) else {
+            return "/mnt/esm-runtime/guest.sh"
+        }
+        return "/mnt/esm-runtime/\(version)/guest.sh"
+    }
+
     func syncRuntimeHelpers() throws {
         let files = FileManager.default
         let runtime = home.appendingPathComponent("runtime")
-        // Read the complete bundle payload before changing any installed helper.
         let helpers = try ["guest.sh", "stop-server.py", "download.py"].map { name in
             (name, try Data(contentsOf: resources.appendingPathComponent("Runtime/" + name)))
         }
+        var digest = SHA256()
+        for (name, bytes) in helpers { digest.update(data: Data((name + "\0").utf8)); digest.update(data: bytes) }
+        let version = digest.finalize().map { String(format: "%02x", $0) }.joined()
+        let destination = runtime.appendingPathComponent(version)
         try files.createDirectory(at: runtime, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        for (name, data) in helpers {
-            let target = runtime.appendingPathComponent(name)
-            if (try? Data(contentsOf: target)) != data { try data.write(to: target, options: .atomic) }
+        if !files.fileExists(atPath: destination.path) {
+            let staging = runtime.appendingPathComponent(".prepare-" + UUID().uuidString)
+            try files.createDirectory(at: staging, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+            defer { try? files.removeItem(at: staging) }
+            for (name, bytes) in helpers { try bytes.write(to: staging.appendingPathComponent(name)) }
+            // Never replace a file already visible through VirtioFS. Its guest
+            // inode cache can report ENOENT after a host-side atomic replacement.
+            try files.moveItem(at: staging, to: destination)
         }
+        for (name, bytes) in helpers {
+            guard try Data(contentsOf: destination.appendingPathComponent(name)) == bytes else {
+                throw EngineError("The runtime helper cache failed validation. Server files were not changed.")
+            }
+        }
+        // This receipt is read only on the Mac, never through the VM mount.
+        try Data(version.utf8).write(to: home.appendingPathComponent("runtime-version"), options: .atomic)
     }
 
     public func perform(_ action: String, output: @escaping (String) -> Void) throws {
@@ -220,12 +244,12 @@ public struct Engine {
                 try enableInternetForwarding(output: output)
                 try command(["start", "--tty=false", "engine"], output: output)
             }
-            try command(["shell", "engine", "bash", "/mnt/esm-runtime/guest.sh", "install"], output: output)
+            try command(["shell", "engine", "bash", runtimeGuestScript, "install"], output: output)
             if !fm.fileExists(atPath: serverConfig.path) {
                 try writeSettings(name: "Enshrouded Server", password: UUID().uuidString, adminPassword: UUID().uuidString)
             }
         } else if action == "shutdown" {
-            try command(["shell", "engine", "bash", "/mnt/esm-runtime/guest.sh", "stop"], output: output)
+            try command(["shell", "engine", "bash", runtimeGuestScript, "stop"], output: output)
             try command(["stop", "engine"], output: output)
         } else {
             if action == "start" {
@@ -233,7 +257,7 @@ public struct Engine {
                 try enableInternetForwarding(output: output)
                 try command(["start", "--tty=false", "engine"], output: output)
             }
-            try command(["shell", "engine", "bash", "/mnt/esm-runtime/guest.sh", action], output: output)
+            try command(["shell", "engine", "bash", runtimeGuestScript, action], output: output)
             if action == "start" {
                 output("Waiting for the game server to answer…\n")
                 let expected = try readSettings().name

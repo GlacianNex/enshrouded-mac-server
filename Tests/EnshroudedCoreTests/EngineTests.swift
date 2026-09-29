@@ -6,10 +6,19 @@ final class EngineTests: XCTestCase {
         let engine = try ManagerTests().fixture()
         defer { try? FileManager.default.removeItem(at: engine.home) }
         try engine.syncRuntimeHelpers()
+        let first = engine.runtimeGuestScript
+        let oldFile = engine.home.appendingPathComponent("runtime/" + first.split(separator: "/").dropLast().last! + "/guest.sh")
+        let oldContents = try Data(contentsOf: oldFile)
         let guest = engine.resources.appendingPathComponent("Runtime/guest.sh")
         try Data("new helper".utf8).write(to: guest)
         try engine.syncRuntimeHelpers()
-        XCTAssertEqual(try String(contentsOf: engine.home.appendingPathComponent("runtime/guest.sh")), "new helper")
+        XCTAssertNotEqual(first, engine.runtimeGuestScript)
+        let version = try String(contentsOf: engine.home.appendingPathComponent("runtime-version"))
+        XCTAssertEqual(try String(contentsOf: engine.home.appendingPathComponent("runtime/" + version + "/guest.sh")), "new helper")
+        XCTAssertEqual(try Data(contentsOf: oldFile), oldContents)
+        let current = engine.runtimeGuestScript
+        try engine.syncRuntimeHelpers()
+        XCTAssertEqual(current, engine.runtimeGuestScript)
         XCTAssertEqual(try String(contentsOf: engine.world.appendingPathComponent("3ad85aea")), "original progress")
     }
 
