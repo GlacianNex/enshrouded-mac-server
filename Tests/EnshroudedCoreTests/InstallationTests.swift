@@ -72,13 +72,42 @@ final class InstallationTests: XCTestCase {
             if stopFails {
                 XCTAssertThrowsError(try ManagerInstallation.replaceManagingServers(new, destination: old, engines: [engine]))
             } else {
-                _ = try ManagerInstallation.replaceManagingServers(new, destination: old, engines: [engine])
+                var stages: [ManagerInstallStage] = []
+                _ = try ManagerInstallation.replaceManagingServers(new, destination: old, engines: [engine], progress: { stages.append($0) })
+                XCTAssertEqual(stages, [.checking, .copying, .checkingServers, .closing, .saving, .stoppingEnvironment, .replacing])
             }
             XCTAssertTrue(FileManager.default.fileExists(atPath: engine.home.appendingPathComponent("stop-requested").path))
             XCTAssertEqual(FileManager.default.fileExists(atPath: engine.home.appendingPathComponent("environment-stopped").path), !stopFails)
             XCTAssertEqual(try BuildInfo.read(app: old).build, stopFails ? "1" : "2")
             XCTAssertEqual(FileManager.default.fileExists(atPath: engine.home.appendingPathComponent("resume-after-manager-update").path), !stopFails)
         }
+    }
+    func testShutdownTimeoutReachesCallerWithoutBlockingRecovery() throws {
+        var engine = try ManagerTests().fixture()
+        engine.environmentShutdownTimeout = 0.05
+        defer { try? FileManager.default.removeItem(at: engine.home) }
+        let old = try app(at: engine.home, name: "Installed", experimental: true, build: "1")
+        let new = try app(at: engine.home, name: "Downloaded", experimental: true, build: "2")
+        let script = #"""
+        #!/bin/sh
+        if [ "$1" = list ]; then echo Running
+        elif [ "$5" = status ]; then echo RUNNING
+        elif [ "$5" = stop ]; then echo 'Server stopped.'
+        elif [ "$3" = sudo ]; then exit 0
+        elif [ "$1" = stop ]; then exec /bin/sleep 10
+        else touch "$LIMA_HOME/../unexpected-recovery"; exec /bin/sleep 10
+        fi
+        """#
+        try script.write(to: engine.lima, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: engine.lima.path)
+        let began = ProcessInfo.processInfo.systemUptime
+        XCTAssertThrowsError(try ManagerInstallation.replaceManagingServers(new, destination: old, engines: [engine])) {
+            XCTAssertTrue($0 is CommandTimeout)
+        }
+        XCTAssertLessThan(ProcessInfo.processInfo.systemUptime - began, 5)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: engine.home.appendingPathComponent("unexpected-recovery").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: engine.home.appendingPathComponent("resume-after-manager-update").path))
+        XCTAssertEqual(try BuildInfo.read(app: old).build, "1")
     }
     func testDownloadedAppInstallsInsteadOfManagingRegardlessOfRunningState() {
         let installed = URL(fileURLWithPath: "/Applications/Enshrouded Server Manager.app")

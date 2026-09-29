@@ -52,16 +52,15 @@ import EnshroudedCore
             let fallback = UserDefaults.standard.string(forKey: "serverHome") ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/EnshroudedServer").path
             let homes = profiles.isEmpty ? [fallback] : profiles.map(\.home)
             let engines = homes.map { Engine(home: URL(fileURLWithPath: $0), resources: Bundle.main.resourceURL!) }
-            let progress = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 460, height: 110), styleMask: [.titled], backing: .buffered, defer: false)
-            progress.isReleasedWhenClosed = false; progress.title = "Updating Enshrouded Server Manager"
-            let label = NSTextField(wrappingLabelWithString: "Updating the manager… Running servers will restart when finished.")
-            label.frame = NSRect(x: 20, y: 25, width: 420, height: 60)
-            progress.contentView?.addSubview(label); progress.center(); progress.makeKeyAndOrderFront(nil)
+            let progress = ManagerInstallProgressWindow(logURL: installLog.home.appendingPathComponent("manager-activity.log"))
             defer { progress.close() }
             var result: Result<URL, Error>?
             DispatchQueue.global(qos: .userInitiated).async {
                 let outcome = Result {
-                    try ManagerInstallation.replaceManagingServers(source, destination: destination, engines: engines, output: { try? installLog.appendActivity($0) }) {
+                    try ManagerInstallation.replaceManagingServers(source, destination: destination, engines: engines, output: { try? installLog.appendActivity($0) }, progress: { stage in
+                        try? installLog.appendActivity(stage.title + "\n")
+                        DispatchQueue.main.async { progress.advance(stage) }
+                    }) {
                         // AppKit can retain stale isTerminated values, especially
                         // during installer run loops. Capture kernel identities first.
                         var lifetimes: [ProcessLifetime] = []
@@ -80,6 +79,7 @@ import EnshroudedCore
             }
             while result == nil { RunLoop.current.run(until: Date().addingTimeInterval(0.1)) }
             _ = try result!.get()
+            progress.advance(.opening)
             try reopen(destination)
             try? installLog.appendActivity("Manager replacement and relaunch completed.\n")
         } catch {

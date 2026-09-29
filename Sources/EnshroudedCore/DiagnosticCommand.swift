@@ -1,11 +1,17 @@
 import Foundation
 import Darwin
 
-/// Bounded, read-only runtime probes. Server lifecycle commands use their own
-/// completion rules and must not be routed through this timeout policy.
+public struct CommandTimeout: LocalizedError {
+    public let message: String
+    public var errorDescription: String? { message }
+}
+
+/// Bounded local command clients. A timeout terminates only this client, never
+/// the VM, game process, or process group. Lifecycle callers supply an accurate
+/// timeout message and retain their own game-save completion rules.
 public enum DiagnosticCommand {
     public static func run(executable: URL, arguments: [String], environment: [String: String],
-                           directory: URL, timeout: TimeInterval,
+                           directory: URL, timeout: TimeInterval, timeoutMessage: String = "Status check timed out. Try again; the server was not stopped.",
                            output: (String) -> Void) throws -> String {
         guard timeout.isFinite, timeout > 0 else { throw EngineError("Diagnostic timeout must be positive") }
         let process = Process(), pipe = Pipe()
@@ -63,7 +69,7 @@ public enum DiagnosticCommand {
         }
         process.waitUntilExit()
         let result = String(decoding: captured, as: UTF8.self)
-        if timedOut { throw EngineError("Status check timed out. Try again; the server was not stopped.") }
+        if timedOut { throw CommandTimeout(message: timeoutMessage) }
         guard process.terminationStatus == 0 else {
             throw EngineError("Operation failed (\(process.terminationStatus)). \(result.suffix(1500))")
         }

@@ -17,7 +17,8 @@ enum ManagerUpdater {
         _ = try release.downloadAsset()
         return release
     }
-    static func download(_ release: ManagerRelease) async throws -> URL {
+    static func download(_ release: ManagerRelease, progress: @escaping (ManagerInstallStage) -> Void = { _ in }) async throws -> URL {
+        progress(.downloading)
         let asset = try release.downloadAsset()
         var request = URLRequest(url: asset.browser_download_url)
         request.timeoutInterval = 120
@@ -27,6 +28,7 @@ enum ManagerUpdater {
               try temporary.resourceValues(forKeys: [.fileSizeKey]).fileSize == asset.size else {
             throw EngineError("The manager download is incomplete. Try again.")
         }
+        progress(.checking)
         return try await Task.detached {
             try release.verifyDownload(Data(contentsOf: temporary, options: .mappedIfSafe))
             let files = FileManager.default

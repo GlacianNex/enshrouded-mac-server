@@ -49,7 +49,8 @@ public enum ManagerInstallation {
         }
     }
     /// Keep Previous.app for recovery until the new build has been used successfully.
-    public static func replace(_ source: URL, destination: URL, beforeReplace: () throws -> Void) throws -> URL {
+    public static func replace(_ source: URL, destination: URL, progress: (ManagerInstallStage) -> Void = { _ in }, beforeReplace: () throws -> Void) throws -> URL {
+        progress(.checking)
         let fm = FileManager.default
         let lock = destination.deletingLastPathComponent().appendingPathComponent(".enshrouded-manager-update.lock")
         let fd = open(lock.path, O_CREAT | O_RDWR | O_NOFOLLOW, 0o600)
@@ -64,6 +65,7 @@ public enum ManagerInstallation {
         try fm.createDirectory(at: transaction, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         let staged = transaction.appendingPathComponent("New.app"), previous = transaction.appendingPathComponent("Previous.app")
         do {
+            progress(.copying)
             try fm.copyItem(at: source, to: staged)
             try verify(staged)
             // The user has approved installing this verified app. FileManager
@@ -72,6 +74,7 @@ public enum ManagerInstallation {
             // this staged copy, retaining the download and system security policy.
             try prepareInstalledCopy(staged)
             try beforeReplace()
+            progress(.replacing)
             try replacePrepared(staged, destination: destination, previous: previous, replacing: replacing)
             return previous
         } catch {
@@ -92,15 +95,18 @@ public enum ManagerLaunchPlan: Equatable {
 
 extension ManagerInstallation {
     /// Both downloaded installers and in-app updates use the same save/resume contract.
-    public static func replaceManagingServers(_ source: URL, destination: URL, engines: [Engine], output: @escaping (String) -> Void = { _ in }, closeManager: () throws -> Void = {}) throws -> URL {
+    public static func replaceManagingServers(_ source: URL, destination: URL, engines: [Engine], output: @escaping (String) -> Void = { _ in }, progress: @escaping (ManagerInstallStage) -> Void = { _ in }, closeManager: () throws -> Void = {}) throws -> URL {
         var stopped: [Engine] = []
         do {
-            return try replace(source, destination: destination) {
+            return try replace(source, destination: destination, progress: progress) {
+                progress(.checkingServers)
                 output("Checking running servers…\n")
                 let states = try engines.map { ($0, try $0.status()) }
+                progress(.closing)
                 output("Closing the previous manager…\n")
                 try closeManager()
                 for (engine, state) in states where state == "RUNNING" || state == "INSTALLED" {
+                    progress(.saving)
                     output("Saving and stopping server at \(engine.home.path)…\n")
                     if state == "RUNNING" {
                         stopped.append(engine)
@@ -108,10 +114,18 @@ extension ManagerInstallation {
                     }
                     // Stop the host agent too: an app replacement cannot update
                     // networking code in a VM process that is already running.
-                    try engine.perform("shutdown", output: output)
+                    try engine.perform("shutdown") { chunk in
+                        if chunk.contains("Stopping the server environment") { progress(.stoppingEnvironment) }
+                        output(chunk)
+                    }
                 }
             }
         } catch {
+            // Report a shutdown timeout immediately. Synchronous recovery through
+            // the same unhealthy host agent could otherwise hang before the UI
+            // ever sees this error. Keep resume markers for the reopened manager.
+            if error is CommandTimeout { throw error }
+            if !stopped.isEmpty { progress(.recovering) }
             var failures: [String] = []
             for engine in stopped {
                 do {

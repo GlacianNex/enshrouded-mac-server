@@ -11,6 +11,8 @@ public struct EngineError: LocalizedError {
 public struct Engine {
     public let home: URL
     public let resources: URL
+    // Overridden only by isolated timeout tests; never terminates the VM itself.
+    var environmentShutdownTimeout: TimeInterval = 60
     public let sharedDownloads: URL?
     public init(home: URL, resources: URL, sharedDownloads: URL? = nil) { self.home = home; self.resources = resources; self.sharedDownloads = sharedDownloads }
     public var data: URL { home.appendingPathComponent("data") }
@@ -65,7 +67,7 @@ public struct Engine {
     }
 
     @discardableResult
-    public func command(_ args: [String], timeout: TimeInterval? = nil, output: @escaping (String) -> Void) throws -> String {
+    public func command(_ args: [String], timeout: TimeInterval? = nil, timeoutMessage: String = "Status check timed out. Try again; the server was not stopped.", output: @escaping (String) -> Void) throws -> String {
         let process = Process(), pipe = Pipe()
         process.executableURL = lima
         process.arguments = args
@@ -73,7 +75,7 @@ public struct Engine {
         env["LIMA_HOME"] = home.appendingPathComponent("lima").path
         env["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
         if let timeout {
-            return try DiagnosticCommand.run(executable: lima, arguments: args, environment: env, directory: home, timeout: timeout, output: output)
+            return try DiagnosticCommand.run(executable: lima, arguments: args, environment: env, directory: home, timeout: timeout, timeoutMessage: timeoutMessage, output: output)
         }
         process.environment = env
         process.currentDirectoryURL = home
@@ -257,7 +259,20 @@ public struct Engine {
             }
         } else if action == "shutdown" {
             try command(["shell", "engine", "bash", runtimeGuestScript, "stop"], output: output)
-            try command(["stop", "engine"], output: output)
+            output("Stopping the server environment…\n")
+            // Power down through the guest first. Old host agents can wait on
+            // exhausted networking streams before they ever ask the VM to stop.
+            // This is a normal OS shutdown, only after the game has exited.
+            do {
+                try command(["shell", "engine", "sudo", "systemctl", "--no-block", "poweroff"], timeout: 10,
+                            timeoutMessage: "Waiting for the environment shutdown request to finish.", output: output)
+            } catch {
+                // SSH may disappear before acknowledging poweroff. The bounded
+                // stop client below remains responsible for confirming shutdown.
+                output("Waiting for the server environment to finish shutting down…\n")
+            }
+            try command(["stop", "engine"], timeout: environmentShutdownTimeout,
+                        timeoutMessage: "The game server has stopped, but its environment did not shut down within 60 seconds. The operation could not finish. Check the log and try again.", output: output)
         } else {
             if action == "start" {
                 guard fm.fileExists(atPath: data.appendingPathComponent("server/enshrouded_server.exe").path) else { throw EngineError("Install the server first") }

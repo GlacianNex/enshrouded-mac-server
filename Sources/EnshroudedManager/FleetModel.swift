@@ -157,7 +157,8 @@ extension FleetModel {
             if alert.runModal() == .alertFirstButtonReturn { installManager(source) }
         } catch { self.error = error.localizedDescription }
     }
-    private func installManager(_ source: URL, destination: URL = Bundle.main.bundleURL) {
+    private func installManager(_ source: URL, destination: URL = Bundle.main.bundleURL, progressWindow: ManagerInstallProgressWindow? = nil) {
+        let progress = progressWindow ?? ManagerInstallProgressWindow(logURL: selected.engine.home.appendingPathComponent("manager-activity.log"))
         let engines = models.map(\.engine)
         for model in models { model.busy = true; model.operationTitle = "Updating manager…" }
         Task {
@@ -166,20 +167,24 @@ extension FleetModel {
                 let backup = try await Task.detached {
                     try ManagerInstallation.replaceManagingServers(source, destination: destination, engines: engines, output: { chunk in
                         Task { @MainActor in self.selected.recordActivity(chunk) }
-                    })
+                    }, progress: { stage in Task { @MainActor in progress.advance(stage); self.selected.recordActivity(stage.title + "\n") } })
                 }.value
                 selected.recordActivity("Previous manager retained at \(backup.path)\n")
+                progress.advance(.opening)
                 let config = NSWorkspace.OpenConfiguration(); config.createsNewApplicationInstance = true
                 config.allowsRunningApplicationSubstitution = false
                 config.environment = ["ESM_RELAUNCH_FROM_PID": String(ProcessInfo.processInfo.processIdentifier)]
                 if let home = ProcessInfo.processInfo.environment["ESM_HOME"] { config.environment["ESM_HOME"] = home }
                 NSWorkspace.shared.openApplication(at: destination, configuration: config) { _, error in
                     Task { @MainActor in
+                        progress.close()
                         if let error { self.error = "Installed, but relaunch failed: \(error.localizedDescription). Open the manager in Finder to resume servers."; for model in self.models { model.busy = false; model.refresh() } }
                         else { ApplicationLifetime.allowTermination = true; NSApp.terminate(nil) }
                     }
                 }
             } catch {
+                progress.close()
+                selected.recordActivity("Manager update failed: " + error.localizedDescription + "\n")
                 self.error = error.localizedDescription
                 for model in models { model.busy = false; model.refresh() }
             }
@@ -323,11 +328,16 @@ extension FleetModel {
         prompt.addButton(withTitle: "Stop, Update & Relaunch"); prompt.addButton(withTitle: "Cancel")
         guard prompt.runModal() == .alertFirstButtonReturn else { return }
         for model in models { model.busy = true; model.operationTitle = "Downloading manager…" }
+        let progress = ManagerInstallProgressWindow(logURL: selected.engine.home.appendingPathComponent("manager-activity.log"))
+        progress.advance(.downloading)
+        selected.recordActivity("Downloading the manager update…\n")
         Task {
             do {
-                let app = try await ManagerUpdater.download(release)
-                installManager(app, destination: URL(fileURLWithPath: "/Applications/Enshrouded Server Manager.app"))
+                let app = try await ManagerUpdater.download(release) { stage in Task { @MainActor in progress.advance(stage); self.selected.recordActivity(stage.title + "\n") } }
+                installManager(app, destination: URL(fileURLWithPath: "/Applications/Enshrouded Server Manager.app"), progressWindow: progress)
             } catch {
+                progress.close()
+                selected.recordActivity("Manager download failed: " + error.localizedDescription + "\n")
                 self.error = error.localizedDescription
                 for model in models { model.busy = false; model.refresh() }
             }

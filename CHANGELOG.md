@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.6 (Candidate)
+
+- Show named update stages, an animated progress bar, elapsed time, long-wait explanations, and an Open Update Log button in both installer and in-app updates.
+- Save and stop the game, then request normal guest shutdown before stopping the hosting environment. This avoids waiting indefinitely on an exhausted old networking process.
+- Bound the environment-stop wait and report a clear error instead of leaving the update window indefinitely.
+
 ## 0.1.5 (Candidate)
 
 - Fix UDP forwarding exhaustion and restart environments during manager upgrades so updated networking tools take effect.
