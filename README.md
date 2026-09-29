@@ -80,6 +80,6 @@ For local experimental builds, use `bash scripts/build-experimental.sh`. These d
 
 ## License and Attribution
 
-The manager and original ember icon are MIT licensed. Third-party components retain their licenses. No game binaries, game artwork, or game logos are included in the release.
+The manager source is MIT licensed. Third-party components retain their licenses. The Enshrouded icon identifies the supported game and is excluded from the MIT license; game artwork and trademarks belong to their respective owners. No game binaries are included in the release.
 
 This is an unofficial community tool, not affiliated with Keen Games, Valve, or Apple.

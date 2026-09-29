@@ -1,6 +1,6 @@
 # Third-Party Components
 
-The manager and original ember icon are MIT licensed. This is an unofficial community tool, not affiliated with Keen Games, Valve, or Apple.
+The manager source is MIT licensed. The Enshrouded icon in `Assets/Enshrouded.png` and `Assets/Enshrouded.icns` is game artwork, restored from the existing experimental app, and is not covered by the MIT license. Enshrouded artwork and trademarks belong to their respective owners. This is an unofficial community tool, not affiliated with Keen Games, Valve, or Apple.
 
 ## Bundled
 
@@ -14,4 +14,4 @@ The manager and original ember icon are MIT licensed. This is an unofficial comm
 - **DepotDownloader 3.4.0** — GPL-2.0. [Source](https://github.com/SteamRE/DepotDownloader/tree/DepotDownloader_3.4.0).
 - **Enshrouded dedicated server and Steam runtime** — proprietary publisher software downloaded from Valve. They are not bundled or relicensed.
 
-The release does not redistribute a prebuilt guest image, game binaries, game artwork, or game logos. macOS and Apple's virtualization framework provide the host platform. CrossOver, Docker Desktop, and Rosetta are not required.
+The release does not redistribute a prebuilt guest image, game binaries. macOS and Apple's virtualization framework provide the host platform. CrossOver, Docker Desktop, and Rosetta are not required.

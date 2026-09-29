@@ -2,6 +2,28 @@ import XCTest
 @testable import EnshroudedCore
 
 final class InstallationTests: XCTestCase {
+    func testApprovedInstallClearsOnlyCopiedQuarantine() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = try app(at: root, name: "Downloaded", experimental: false, build: "1")
+        let destination = root.appendingPathComponent("Installed.app")
+        let quarantine = "0083;6bbb1234;Safari;C94F979C-7D26-48E9-A261-A86250773913"
+        func xattr(_ arguments: [String]) throws -> Int32 {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/xattr")
+            process.arguments = arguments
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+            try process.run(); process.waitUntilExit()
+            return process.terminationStatus
+        }
+        XCTAssertEqual(try xattr(["-w", "-r", "com.apple.quarantine", quarantine, source.path]), 0)
+        _ = try ManagerInstallation.replace(source, destination: destination, beforeReplace: {})
+        XCTAssertEqual(try xattr(["-p", "com.apple.quarantine", source.path]), 0)
+        XCTAssertNotEqual(try xattr(["-p", "com.apple.quarantine", destination.path]), 0)
+        XCTAssertNotEqual(try xattr(["-p", "com.apple.quarantine", destination.appendingPathComponent("Contents/MacOS/Test").path]), 0)
+        try ManagerInstallation.verify(destination)
+    }
     func testManagerUpdateStopsRunningServerWithoutPlayerQuery() throws {
         for stopFails in [false, true] {
             let engine = try ManagerTests().fixture()

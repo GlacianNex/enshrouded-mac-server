@@ -17,6 +17,23 @@ public enum ManagerInstallation {
         try process.run(); process.waitUntilExit()
         guard process.terminationStatus == 0 else { throw EngineError("The selected app failed its code-signature integrity check") }
     }
+    private static func prepareInstalledCopy(_ app: URL) throws {
+        func clearQuarantine(_ url: URL) throws {
+            // Lima includes symbolic links. Never follow them outside the copy.
+            if removexattr(url.path, "com.apple.quarantine", XATTR_NOFOLLOW) != 0 {
+                let code = errno
+                if code != ENOATTR { throw NSError(domain: NSPOSIXErrorDomain, code: Int(code)) }
+            }
+        }
+        try clearQuarantine(app)
+        var enumerationError: Error?
+        guard let entries = FileManager.default.enumerator(at: app, includingPropertiesForKeys: nil,
+            errorHandler: { _, error in enumerationError = error; return false }) else {
+            throw EngineError("Could not prepare the installed app")
+        }
+        for case let entry as URL in entries { try clearQuarantine(entry) }
+        if let enumerationError { throw enumerationError }
+    }
     /// Keep Previous.app for recovery until the new build has been used successfully.
     public static func replace(_ source: URL, destination: URL, beforeReplace: () throws -> Void) throws -> URL {
         let fm = FileManager.default
@@ -35,6 +52,11 @@ public enum ManagerInstallation {
         do {
             try fm.copyItem(at: source, to: staged)
             try verify(staged)
+            // The user has approved installing this verified app. FileManager
+            // preserves download quarantine, which can translocate the installed
+            // copy on relaunch and send it back into the installer. Normalize only
+            // this staged copy, retaining the download and system security policy.
+            try prepareInstalledCopy(staged)
             try beforeReplace()
             if replacing { try fm.moveItem(at: destination, to: previous) }
             do { try fm.moveItem(at: staged, to: destination) }
