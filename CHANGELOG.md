@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.7 (Candidate)
+
+- Open logs in an independent movable, resizable window; keep line numbers inside the log pane.
+- Keep server-update checks in the open menu with live stages, elapsed time, results, and bounded waits.
+- Refresh menu controls in place after stopping; keep unrelated actions available during a stop.
+- Reuse one management window and improve New Server field sizing, focus, port entry, and validation.
+- Show speed reports as measured one-minute intervals with the age of the latest report; explain that the game can skip reports for several minutes.
+
 ## 0.1.6 (Candidate)
 
 - Show named update stages, an animated progress bar, elapsed time, long-wait explanations, and an Open Update Log button in both installer and in-app updates.

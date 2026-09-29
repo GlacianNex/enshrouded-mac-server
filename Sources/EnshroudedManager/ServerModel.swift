@@ -8,6 +8,7 @@ import EnshroudedCore
     @Published var setupProgress: SetupProgress?
     @Published var state = "Checking…"
     @Published var busy = false
+    private(set) var activeAction: String?
     @Published var polling = false
     @Published var activity = ""
     @Published var serverLog = ""
@@ -30,6 +31,8 @@ import EnshroudedCore
     @Published var operationTitle = ""
     @Published var release: ServerRelease?
     @Published var checkingRelease = false
+    @Published var releaseCheckStarted: Date?
+    @Published var releaseCheckStage = "Contacting Valve"
     @Published var releaseCheckedAt: Date?
     @Published var releaseError: String?
     @Published var automation = HostingAutomation()
@@ -92,10 +95,13 @@ import EnshroudedCore
         return speedSeries.current(at: Date())
     }
     var speedSummary: String {
-        if let value = currentUpdateRate { return "Latest minute average: " + String(format: "%.1f updates/s", value) }
         if state != "RUNNING" { return "Readings resume when the server is running." }
-        if let value = speedSeries.lastValue { return String(format: "Last report: %.1f updates/s · waiting for a fresh report", value) }
-        return "Waiting for the first minute report…"
+        guard let value = speedSeries.lastValue, let report = speedSeries.lastReport else {
+            return "Waiting for Enshrouded’s first speed report…"
+        }
+        let seconds = max(0, Int(Date().timeIntervalSince(report)))
+        let age = seconds < 60 ? "\(seconds)s ago" : "\(seconds / 60)m \(seconds % 60)s ago"
+        return String(format: "Last reported: %.1f updates/s", value) + " · " + age
     }
     func loadSettings() {
         if let value = try? engine.readSettings() { settings = value }
@@ -151,8 +157,9 @@ import EnshroudedCore
             afterRefresh()
         }
     }
-    func operation(_ title: String, work: @escaping (Engine) throws -> Void, completion: ((Bool) -> Void)? = nil) {
+    func operation(_ title: String, action: String? = nil, work: @escaping (Engine) throws -> Void, completion: ((Bool) -> Void)? = nil) {
         guard !busy else { completion?(false); return }
+        activeAction = action
         busy = true; operationTitle = (polling || checkingRelease) ? "Waiting for status check…" : title; error = nil; recordActivity("\n\(title)…\n")
         let engine = engine
         Task {
@@ -163,7 +170,7 @@ import EnshroudedCore
             catch { self.error = error.localizedDescription; recordActivity("\(title) failed: \(error.localizedDescription)\n") }
             activity = String(activity.suffix(40_000))
             if succeeded, let cached = release { release = ServerRelease(installed: engine.installedManifest, latest: cached.latest) }
-            busy = false; loadSettings(); completion?(succeeded); refresh()
+            activeAction = nil; busy = false; loadSettings(); completion?(succeeded); refresh()
         }
     }
     func flushActivity() async {
@@ -178,7 +185,7 @@ import EnshroudedCore
     }
     func run(_ action: String) {
         let titles = ["start": "Starting…", "stop": "Saving & stopping…", "restart": "Restarting…", "update": "Updating server…", "install": "Setting up server…", "shutdown": "Shutting down…"]
-        operation(titles[action] ?? action.capitalized) { engine in
+        operation(titles[action] ?? action.capitalized, action: action) { engine in
             try engine.perform(action) { chunk in Task { @MainActor in
                 self.recordActivity(chunk)
                 if chunk.hasPrefix("Saving and stopping") { self.operationTitle = "Saving & stopping…" }
@@ -206,12 +213,22 @@ import EnshroudedCore
 
 extension Model {
     var menuValue: String { busy ? operationTitle : state == "RUNNING" ? playerCount.map(String.init) ?? "—" : "—" }
+    var releaseCheckSummary: String {
+        let seconds = Int(Date().timeIntervalSince(releaseCheckStarted ?? Date()))
+        return "\(releaseCheckStage)… \(seconds)s"
+    }
     func checkUpdates(allowBoot: Bool = true) {
         guard !busy, !checkingRelease, ["INSTALLED", "RUNNING", "VM_STOPPED"].contains(state), allowBoot || state != "VM_STOPPED" else { return }
-        checkingRelease = true; releaseError = nil; nextReleaseCheck = Date().addingTimeInterval(600)
+        checkingRelease = true; releaseCheckStarted = Date(); releaseCheckStage = "Contacting Valve"; releaseError = nil; nextReleaseCheck = Date().addingTimeInterval(600)
         let engine = engine
         Task {
-            do { release = try await Task.detached { try engine.checkServerRelease() }.value; releaseCheckedAt = Date() }
+            do {
+                let progress: (String) -> Void = { [weak self] stage in
+                    Task { @MainActor in self?.releaseCheckStage = stage }
+                }
+                release = try await Task.detached { try engine.checkServerRelease(progress: progress) }.value
+                releaseCheckedAt = Date()
+            }
             catch { releaseError = error.localizedDescription }
             checkingRelease = false
         }

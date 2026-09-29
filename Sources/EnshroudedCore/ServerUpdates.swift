@@ -20,24 +20,33 @@ extension Engine {
         guard manifests.count == 1 else { return nil }
         return String(manifests[0].dropFirst(8).dropLast(9))
     }
-    public func checkServerRelease() throws -> ServerRelease {
+    public func checkServerRelease(progress: @escaping (String) -> Void = { _ in }) throws -> ServerRelease {
         try withOperationLock(name: "version-check.lock") {
             let current = try status()
             guard current != "NOT_INSTALLED" else { throw EngineError("Install the server before checking Valve for updates") }
             if current == "VM_STOPPED" {
                 return try withOperationLock {
                     let booted = try status() == "VM_STOPPED"
-                    if booted { try command(["start", "--tty=false", "engine"], output: {_ in}) }
-                    defer { if booted { try? command(["stop", "engine"], output: {_ in}) } }
-                    return try fetchServerRelease()
+                    if booted { progress("Starting the server environment"); try command(["start", "--tty=false", "engine"], timeout: 60, timeoutMessage: "The server environment did not start in time. Try the update check again.", output: {_ in}) }
+                    defer { if booted { progress("Closing the server environment"); _ = try? command(["stop", "engine"], timeout: 30, output: {_ in}) } }
+                    return try fetchServerRelease(progress: progress)
                 }
             }
-            return try fetchServerRelease()
+            return try fetchServerRelease(progress: progress)
         }
     }
-    private func fetchServerRelease() throws -> ServerRelease {
-            let script = "mkdir -p /opt/esm/version-check; exec timeout 90 /opt/esm/downloader/DepotDownloader -app 2278520 -depot 2278521 -os windows -osarch 64 -manifest-only -dir /opt/esm/version-check"
-            let output = try command(["shell", "engine", "bash", "-lc", script], timeout: 120, output: {_ in})
+    private func fetchServerRelease(progress: @escaping (String) -> Void) throws -> ServerRelease {
+            progress("Checking Valve’s server version")
+            let script = "mkdir -p /opt/esm/version-check; exec timeout 40 /opt/esm/downloader/DepotDownloader -app 2278520 -depot 2278521 -os windows -osarch 64 -manifest-only -dir /opt/esm/version-check"
+            let output: String
+            do {
+                output = try command(["shell", "engine", "bash", "-lc", script], timeout: serverReleaseTimeout, timeoutMessage: "Valve’s update check took too long. Try again. Your server is unchanged.", output: {_ in})
+            } catch {
+                if error.localizedDescription.hasPrefix("Operation failed (124)") {
+                    throw EngineError("Valve’s update check took too long. Try again. Your server is unchanged.")
+                }
+                throw error
+            }
             guard let latest = ServerRelease.manifest(in: output) else { throw EngineError("Valve did not return a server manifest. Existing files are unaffected.") }
             return ServerRelease(installed: installedManifest, latest: latest)
     }

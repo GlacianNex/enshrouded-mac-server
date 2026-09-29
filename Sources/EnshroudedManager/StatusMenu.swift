@@ -7,6 +7,7 @@ import EnshroudedCore
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let menu = NSMenu()
     private var actions: [StatusMenuAction] = []
+    private var liveRows: [() -> Void] = []
     private var tracking = false
     private var timer: Timer?
 
@@ -22,6 +23,7 @@ import EnshroudedCore
         RunLoop.main.add(statusTimer, forMode: .common); timer = statusTimer
     }
     func refreshStatus() {
+        for update in liveRows { update() }
         item.button?.image = MenuBranding.image(running: fleet.models.contains { $0.state == "RUNNING" }, busy: fleet.models.contains { $0.busy })
         item.button?.title = " Enshrouded · \(fleet.menuValue)"
         item.button?.font = .monospacedDigitSystemFont(ofSize: 13, weight: .medium)
@@ -40,12 +42,59 @@ import EnshroudedCore
         if let checked { row.state = checked ? .on : .off }
         menu.addItem(row)
     }
+    private func addLive(to menu: NSMenu, title: @escaping () -> String, enabled: @escaping () -> Bool, checked: (() -> Bool)? = nil, action: @escaping () -> Void) {
+        add(title(), to: menu, enabled: enabled(), checked: checked?(), action: action)
+        guard let row = menu.items.last else { return }
+        liveRows.append { [weak row] in
+            row?.title = title()
+            row?.isEnabled = enabled()
+            if let checked { row?.state = checked() ? .on : .off }
+        }
+    }
+    private func addUpdateCheck(to menu: NSMenu) {
+        // A view-backed menu control does not dismiss the menu on click.
+        let row = NSMenuItem()
+        let button = NSButton(title: "Check for Server Updates", target: nil, action: nil)
+        button.isBordered = false
+        button.alignment = .left
+        button.font = .menuFont(ofSize: 0)
+        button.frame = NSRect(x: 18, y: 2, width: 410, height: 23)
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 448, height: 27))
+        container.addSubview(button)
+        row.view = container
+        let target = StatusMenuAction { [weak self] in
+            guard let self else { return }
+            for server in self.fleet.configuredModels where !server.busy { server.checkUpdates() }
+            self.refreshStatus()
+        }
+        actions.append(target)
+        button.target = target; button.action = #selector(StatusMenuAction.invoke)
+        liveRows.append { [weak self, weak button] in
+            guard let self, let button else { return }
+            let models = self.fleet.configuredModels
+            if let checking = models.first(where: \.checkingRelease) {
+                button.title = checking.releaseCheckSummary
+                button.isEnabled = false
+            } else {
+                let failed = models.contains { $0.releaseError != nil }
+                let checked = models.contains { $0.releaseCheckedAt != nil }
+                let known = models.allSatisfy { $0.release?.installed != nil }
+                let available = models.contains { $0.release?.updateAvailable == true }
+                button.title = failed ? "Update Check Failed · Retry" : available ? "Server Update Available · Check Again" : checked ? (known ? "Servers Are Up to Date · Check Again" : "Valve Check Complete · Check Again") : "Check for Server Updates"
+                button.isEnabled = models.contains { !$0.busy && ["INSTALLED", "RUNNING", "VM_STOPPED"].contains($0.state) }
+            }
+            button.toolTip = models.compactMap(\.releaseError).first ?? "Checks Valve for a newer server version. No game files are installed."
+        }
+        menu.addItem(row)
+        liveRows.last?()
+    }
+
     private func open(_ server: Model) {
         fleet.selectedID = server.engine.home.path
         showManagement(); NSApp.activate(ignoringOtherApps: true)
     }
     private func rebuild() {
-        menu.removeAllItems(); actions.removeAll()
+        menu.removeAllItems(); actions.removeAll(); liveRows.removeAll()
         let experimental = fleet.selected.build.experimental
         let available = fleet.managerUpdateAvailable
         let managerTitle = experimental ? "Enshrouded Manager · Experimental"
@@ -60,46 +109,47 @@ import EnshroudedCore
                 ? "Updating the manager will stop all running servers. They will start back up once the update finishes."
                 : "Checks for manager updates at launch and every five minutes while the manager is open."
         if !experimental {
-            add(fleet.checkingManagerRelease ? "Checking for Manager Updates…" : "Check for Manager Updates", to: menu,
-                enabled: !fleet.checkingManagerRelease && !fleet.models.contains(where: \.busy)) { self.fleet.checkManagerUpdates() }
+            addLive(to: menu, title: { [weak self] in self?.fleet.checkingManagerRelease == true ? "Checking for Manager Updates…" : "Check for Manager Updates" },
+                enabled: { [weak self] in self?.fleet.checkingManagerRelease == false }) { self.fleet.checkManagerUpdates() }
         }
         menu.addItem(.separator())
-        let busy = fleet.models.contains { $0.busy }
-        if fleet.models.contains(where: { $0.release?.updateAvailable == true }) {
-            add("Update Enshrouded Server…", to: menu, enabled: !busy) { self.fleet.updateAllServers() }
-            menu.addItem(.separator())
-        }
+        addLive(to: menu, title: { "Update Enshrouded Server…" }, enabled: { [weak self] in
+            guard let self else { return false }
+            return !self.fleet.models.contains(where: \.busy) && self.fleet.models.contains { $0.release?.updateAvailable == true }
+        }) { self.fleet.updateAllServers() }
+        menu.addItem(.separator())
         for server in fleet.configuredModels {
             let submenu = NSMenu(); submenu.autoenablesItems = false
             let count = server.stopped ? "0 players" : server.playerCount.map { "\($0) players" } ?? "Players: checking…"
             let row = NSMenuItem(title: "\(server.name) — \(server.label) · \(count)", action: nil, keyEquivalent: "")
             row.submenu = submenu; menu.addItem(row)
+            liveRows.append { [weak row] in row?.title = "\(server.name) — \(server.label) · \(server.peerSummary)" }
             if let address = server.endpoint { add("Join address: \(address) · Copy", to: submenu) { server.copy(address) } }
             else { add("Join address: unavailable", to: submenu) }
             add("Copy Player Password", to: submenu, enabled: !server.settings.password.isEmpty) { server.copy(server.settings.password) }
             add("Copy Admin Password", to: submenu, enabled: !server.settings.adminPassword.isEmpty) { server.copy(server.settings.adminPassword) }
             submenu.addItem(.separator())
-            add(server.busy ? server.operationTitle : "Start Server", to: submenu, enabled: server.canEdit) { server.run("start") }
-            add("Stop Server (Save & Stop)", to: submenu, enabled: server.state == "RUNNING" && !server.busy) { server.run("stop") }
-            add("Start Server at Login", to: submenu, enabled: !server.busy, checked: server.automation.startAtLogin) {
+            addLive(to: submenu, title: { server.busy ? server.operationTitle : "Start Server" }, enabled: { server.canEdit }) { server.run("start") }
+            addLive(to: submenu, title: { "Stop Server (Save & Stop)" }, enabled: { server.state == "RUNNING" && !server.busy }) { server.run("stop") }
+            addLive(to: submenu, title: { "Start Server at Login" }, enabled: { !server.busy || server.activeAction == "stop" }, checked: { server.automation.startAtLogin }) {
                 var value = server.automation; value.startAtLogin.toggle(); server.saveAutomation(value)
             }
-            add("Delete Server…", to: submenu, enabled: !busy) { self.fleet.deleteServer(server) }
+            addLive(to: submenu, title: { "Delete Server…" }, enabled: { [weak self] in self?.fleet.canChangeProfiles == true && !server.busy }) { self.fleet.deleteServer(server) }
             add("Server Management…", to: submenu) { self.open(server) }
         }
         menu.addItem(.separator())
         add("Enshrouded Server Build \(fleet.selected.engine.installedManifest ?? "Unavailable")", to: menu)
-        let checking = fleet.models.contains { $0.checkingRelease }
-        add(checking ? "Checking for Server Updates…" : "Check for Server Updates", to: menu, enabled: !busy && !checking) { for server in self.fleet.models { server.checkUpdates() } }
-        let automatic = fleet.models.allSatisfy { $0.automation.automaticUpdates }
-        add("Automatically Update All Enshrouded Servers", to: menu, enabled: !busy, checked: automatic) {
+        addUpdateCheck(to: menu)
+
+        addLive(to: menu, title: { "Automatically Update All Enshrouded Servers" }, enabled: { [weak self] in self?.fleet.canChangeProfiles == true }, checked: { [weak self] in self?.fleet.models.allSatisfy { $0.automation.automaticUpdates } == true }) {
+            let automatic = self.fleet.models.allSatisfy { $0.automation.automaticUpdates }
             for server in self.fleet.models { var value = server.automation; value.automaticUpdates = !automatic; server.saveAutomation(value) }
         }
         menu.addItem(.separator())
-        add("New Server…", to: menu, enabled: !busy) { self.fleet.showNewServer = true; self.showManagement(); NSApp.activate(ignoringOtherApps: true) }
+        addLive(to: menu, title: { "New Server…" }, enabled: { [weak self] in self?.fleet.canChangeProfiles == true }) { self.fleet.showNewServer = true; self.showManagement(); NSApp.activate(ignoringOtherApps: true) }
         menu.addItem(.separator())
-        add("Uninstall Server Files…", to: menu, enabled: !busy) { self.fleet.uninstallServerFiles() }
-        add("Quit Manager (Servers Keep Running)", to: menu, enabled: !busy) { NSApp.terminate(nil) }
+        addLive(to: menu, title: { "Uninstall Server Files…" }, enabled: { [weak self] in self?.fleet.models.contains(where: \.busy) == false }) { self.fleet.uninstallServerFiles() }
+        addLive(to: menu, title: { "Quit Manager (Servers Keep Running)" }, enabled: { [weak self] in self?.fleet.models.contains(where: \.busy) == false }) { NSApp.terminate(nil) }
     }
 }
 

@@ -81,8 +81,9 @@ import EnshroudedCore
         guard running.allSatisfy({ $0.playerCount != nil }) else { return "…" }
         return String(running.compactMap(\.playerCount).reduce(0, +))
     }
+    var canChangeProfiles: Bool { !models.contains { $0.busy && $0.activeAction != "stop" } }
     func create(settings: ServerSettings, port: Int) throws {
-        guard !models.contains(where: \.busy) else { throw EngineError("Wait for server maintenance to finish before creating a server") }
+        guard canChangeProfiles else { throw EngineError("Wait for server maintenance to finish before creating a server") }
         _ = try settings.applying(to: [:])
         var profiles = try store.load()
         guard (1024...65535).contains(port), !profiles.contains(where: { $0.port == port }) else { throw EngineError("Choose an unused UDP port from 1024–65535") }
@@ -113,7 +114,7 @@ struct FleetView: View {
                 VStack(spacing: 16) {
                     Text("No Servers").font(.title2.bold())
                     Text("Create a server to get started. Existing installation files are reused.")
-                    Button("New Server…") { fleet.showNewServer = true }.disabled(fleet.models.contains(where: \.busy))
+                    Button("New Server…") { fleet.showNewServer = true }.disabled(!fleet.canChangeProfiles)
                 }.frame(width: 640, height: 860)
             } else {
                 ManagementView(model: fleet.selected, removeServer: { fleet.removeSelectedServer() }).id(fleet.selectedID)
@@ -124,22 +125,51 @@ struct FleetView: View {
     }
 }
 struct NewServerView: View {
-    @ObservedObject var fleet: FleetModel
+    let fleet: FleetModel
     @State private var draft = ServerSettings()
-    @State private var port = 15637
+    @State private var port = "15637"
     @State private var error: String?
+    @FocusState private var focused: Field?
+    private enum Field: Hashable { case name, player, admin, port }
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             Text("New Enshrouded Server").font(.title2.bold())
-            TextField("Server name", text: $draft.name)
-            SecureField("Player password (8+ characters)", text: $draft.password)
-            SecureField("Different admin password", text: $draft.adminPassword)
-            TextField("UDP port", value: $port, format: .number.grouping(.never))
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Server Name").font(.headline)
+                TextField("Server name", text: $draft.name).focused($focused, equals: .name)
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Player Password").font(.headline)
+                SecureField("At least 8 characters", text: $draft.password).focused($focused, equals: .player)
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Admin Password").font(.headline)
+                SecureField("At least 8 characters; different from player password", text: $draft.adminPassword).focused($focused, equals: .admin)
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("UDP Port").font(.headline)
+                TextField("UDP port", text: $port).focused($focused, equals: .port)
+            }
             Text("Each server needs 8 GB of RAM, 30 GB of free disk space, and its own forwarded UDP port.").font(.callout).foregroundStyle(.secondary)
-            if let error { Text(error).foregroundStyle(.orange) }
-            HStack { Button("Cancel") { dismiss() }; Spacer(); Button("Create Server") { do { try fleet.create(settings: draft, port: port); dismiss() } catch { self.error = error.localizedDescription } } }
-        }.padding(24).frame(width: 500).onAppear { port = (15637...65535).first { candidate in !fleet.configuredModels.contains { Int($0.engine.hostPort) == candidate } } ?? 15637 }
+            if let error { Text(error).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true) }
+            HStack {
+                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("Create Server") {
+                    do {
+                        guard let number = Int(port.trimmingCharacters(in: .whitespacesAndNewlines)) else { throw EngineError("Enter a UDP port from 1024–65535.") }
+                        try fleet.create(settings: draft, port: number)
+                        dismiss()
+                    } catch { self.error = error.localizedDescription }
+                }.keyboardShortcut(.defaultAction)
+            }
+        }.textFieldStyle(.roundedBorder).controlSize(.large)
+        .padding(24).frame(width: 500)
+        .onAppear {
+            port = String((15637...65535).first { candidate in !fleet.configuredModels.contains { Int($0.engine.hostPort) == candidate } } ?? 15637)
+            focused = .name
+        }
     }
 }
 
@@ -233,7 +263,7 @@ extension FleetModel {
     }
     func removeSelectedServer() { deleteServer(selected) }
     func deleteServer(_ model: Model) {
-        guard !models.contains(where: \.busy) else { return }
+        guard canChangeProfiles, !model.busy else { return }
         let alert = NSAlert(); alert.messageText = "Delete \(model.name)?"
         alert.informativeText = "Stops this server and removes its settings and entry. Worlds, logs and backups are archived. Downloaded files and the environment stay available for reuse."
         alert.addButton(withTitle: "Delete Server"); alert.addButton(withTitle: "Cancel")

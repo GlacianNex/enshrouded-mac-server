@@ -5,7 +5,7 @@ struct EnshroudedApp: App {
     @NSApplicationDelegateAdaptor(ManagerAppDelegate.self) private var delegate
     @StateObject private var fleet = FleetModel()
     var body: some Scene {
-        WindowGroup("Server Management", id: "management") { FleetView(fleet: fleet) }
+        Window("Server Management", id: "management") { FleetView(fleet: fleet) }
             .defaultSize(width: 640, height: 860)
             .windowResizability(.contentSize)
     }

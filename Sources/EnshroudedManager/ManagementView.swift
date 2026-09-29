@@ -5,7 +5,6 @@ import EnshroudedCore
 struct ManagementView: View {
     @ObservedObject var model: Model
     @State private var settingsOpen = false
-    @State private var logsOpen = false
     @State private var setupOpen = false
     var removeServer: () -> Void = {}
     var body: some View {
@@ -23,7 +22,7 @@ struct ManagementView: View {
                 Spacer()
             }.padding(.horizontal, 8)
             if model.busy {
-                HStack { ProgressView().controlSize(.small); VStack(alignment: .leading) { Text(model.operationTitle).font(.headline); Text("Keep the manager open until this operation finishes.").font(.caption).foregroundStyle(.secondary) }; Spacer(); Button("Show Progress") { logsOpen = true } }.padding(12).background(.background.secondary, in: RoundedRectangle(cornerRadius: 8))
+                HStack { ProgressView().controlSize(.small); VStack(alignment: .leading) { Text(model.operationTitle).font(.headline); Text("Keep the manager open until this operation finishes.").font(.caption).foregroundStyle(.secondary) }; Spacer(); Button("Show Progress") { LogsWindowController.show(model: model) } }.padding(12).background(.background.secondary, in: RoundedRectangle(cornerRadius: 8))
             }
             if model.state == "NOT_INSTALLED" {
                 GroupBox("Set up your Enshrouded server") {
@@ -50,7 +49,7 @@ struct ManagementView: View {
                 Button(model.state == "RUNNING" ? "Stop Server" : "Start Server") { model.run(model.state == "RUNNING" ? "stop" : "start") }
                     .disabled(model.busy || (model.state != "RUNNING" && !model.canEdit))
                 Button("Server Settings") { settingsOpen = true }.disabled(model.state == "NOT_INSTALLED" || model.busy)
-                Button("Open Log") { logsOpen = true }
+                Button("Open Log") { LogsWindowController.show(model: model) }
                 Button("Logs Folder") { NSWorkspace.shared.open(model.engine.data.appendingPathComponent("logs")) }
                 Button("Open Server Folder") { NSWorkspace.shared.open(model.engine.data.appendingPathComponent("server")) }
             }.font(.system(size: 11)).controlSize(.small)
@@ -63,9 +62,8 @@ struct ManagementView: View {
         .background(ManagementWindowTitle(name: model.name))
         .sheet(isPresented: $settingsOpen) { SettingsView(model: model, draft: model.settings) }
         .sheet(isPresented: $setupOpen) { SetupView(model: model, draft: model.settings) }
-        .sheet(isPresented: $logsOpen) { LogsView(model: model) }
         .confirmationDialog("Update or repair the Enshrouded server?", isPresented: $model.showMaintenance, titleVisibility: .visible) {
-            Button("Update Enshrouded Server") { model.run("update"); logsOpen = true }
+            Button("Update Enshrouded Server") { model.run("update"); LogsWindowController.show(model: model) }
         } message: { Text("Running servers must be empty. The manager saves and stops, backs up the world and configuration, then downloads and validates the latest files from Valve. A previously running server restarts; a stopped server stays stopped.") }
         .confirmationDialog("Save and restart this server?", isPresented: $model.showRestart, titleVisibility: .visible) {
             Button("Save & Restart") { model.run("restart") }
@@ -80,6 +78,7 @@ struct MetricGraph: View {
     let color: Color
     var fillsAvailableSpace = false
     var maximumGap: TimeInterval = 45
+    var reportIntervals = false
     var body: some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 6) {
@@ -89,8 +88,15 @@ struct MetricGraph: View {
                     Text("Readings appear while the server is running.").font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: fillsAvailableSpace ? 0 : 175, maxHeight: fillsAvailableSpace ? .infinity : 175)
                 } else {
                     Chart(PerformanceHistory.chartPoints(points, maximumGap: maximumGap)) { point in
+                        if reportIntervals {
+                            // Each report describes the preceding minute, not a
+                            // live sample. Show its measured interval without
+                            // joining across unreported periods.
+                            RuleMark(xStart: .value("From", point.date.addingTimeInterval(-60)), xEnd: .value("To", point.date), y: .value(title, point.value)).foregroundStyle(color).lineStyle(StrokeStyle(lineWidth: 3))
+                        } else {
                         LineMark(x: .value("Time", point.date), y: .value(title, point.value), series: .value("Session", point.segment)).foregroundStyle(color)
-                        PointMark(x: .value("Time", point.date), y: .value(title, point.value)).symbolSize(8).foregroundStyle(color)
+                        }
+                        PointMark(x: .value("Time", point.date), y: .value(title, point.value)).symbolSize(reportIntervals ? 18 : 8).foregroundStyle(color)
                     }.chartXScale(domain: Date().addingTimeInterval(-PerformanceHistory.duration)...Date()).chartYScale(domain: .automatic(includesZero: true))
                         .chartXAxis { AxisMarks(values: (0...3).map { Date().addingTimeInterval(-Double(3 - $0) * 3600) }) { _ in AxisGridLine(); AxisValueLabel(format: .dateTime.hour().minute()) } }
                         .chartYAxis { AxisMarks(position: .leading, values: .automatic(desiredCount: 5)) { _ in AxisGridLine(); AxisValueLabel() } }
@@ -114,10 +120,10 @@ struct PerformanceView: View {
                     stat("MEMORY USED", model.metrics.map { String(format: "%.2f GB", $0.memoryBytes / 1_073_741_824) } ?? "—")
                     stat("LAST SAVE", model.snapshot.lastSaveCompleted ? "Completed in log" : "No completion in recent log")
                 }.padding(.vertical, 4).layoutPriority(1)
-                MetricGraph(title: "Server Speed (updates per second)", subtitle: model.speedSummary, points: model.updateHistory, color: .blue, fillsAvailableSpace: true, maximumGap: ServerSpeedHistory.freshness)
-                    .help("Simulation speed, not your game's graphics FPS. Enshrouded publishes this average about once a minute; five-second simulation averages are unavailable. Gaps indicate missing reports or a server restart.")
+                MetricGraph(title: "Server Speed (updates per second)", subtitle: model.speedSummary, points: model.updateHistory, color: .blue, fillsAvailableSpace: true, maximumGap: ServerSpeedHistory.freshness, reportIntervals: true)
+                    .help("Simulation speed, not graphics FPS. Each bar represents a reported one-minute average. Enshrouded can skip reports for several minutes; gaps mean no measurement was provided. The report age updates every second.")
                 MetricGraph(title: "Server Memory (GB)", subtitle: "Memory used to run this server · 5-second averages", points: model.memoryHistory, color: .blue, fillsAvailableSpace: true, maximumGap: 7.5)
-                Text("Last 3 hours · memory averaged over 5 seconds. Server speed uses Enshrouded’s minute reports.").font(.system(size: 10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).layoutPriority(1)
+                Text("Last 3 hours · memory: 5-second averages. Speed: game reports, which may be several minutes apart.").font(.system(size: 10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).layoutPriority(1)
             }.padding(14).frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ScrollView {

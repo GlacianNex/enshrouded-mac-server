@@ -103,10 +103,10 @@ struct LogsView: View {
     @State private var wrapText = true
     @State private var currentServerLog = ""
     @State private var loading = true
-    @Environment(\.dismiss) private var dismiss
+    var close: () -> Void
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack { Text("Server Logs").font(.title2.bold()); Spacer(); Button("Done") { dismiss() } }
+            HStack { Text("Server Logs").font(.title2.bold()); Spacer(); Button("Done", action: close) }
             Picker("Log", selection: $selected) { Text("Server").tag("Server"); Text("Manager Activity").tag("Manager") }.pickerStyle(.segmented)
             TextField("Filter log lines", text: $filter)
             HStack(spacing: 16) {
@@ -117,13 +117,13 @@ struct LogsView: View {
                 Spacer()
             }
             LogTextPane(text: displayed, wrap: wrapText, follow: autoScroll)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity).clipped()
             HStack {
                 Text(selected == "Server" ? "Latest 256 KB · refreshes every second" : "Recent manager activity")
                     .font(.caption).foregroundStyle(.secondary)
                 Spacer(); Button("Open Log Folder") { NSWorkspace.shared.open(selected == "Server" ? model.engine.data.appendingPathComponent("logs") : model.engine.home) }
             }
-        }.padding(20).frame(width: 820, height: 580)
+        }.padding(20).frame(minWidth: 620, minHeight: 400)
         .task {
             let engine = model.engine
             while !Task.isCancelled {
@@ -231,6 +231,11 @@ private final class LogTextScrollView: NSScrollView {
 /// Draw line numbers separately so Copy contains only the original log text.
 private final class LogLineRuler: NSRulerView {
     override func drawHashMarksAndLabels(in rect: NSRect) {
+        // SwiftUI hosting can disable ancestor clipping. Confine all ruler
+        // drawing, including its background, to this scroll view’s gutter.
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        NSBezierPath(rect: bounds.intersection(rect)).addClip()
         NSColor.windowBackgroundColor.setFill()
         bounds.fill()
         guard let textView = clientView as? NSTextView, let layout = textView.layoutManager else { return }

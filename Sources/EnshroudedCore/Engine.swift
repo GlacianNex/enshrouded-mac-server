@@ -13,6 +13,7 @@ public struct Engine {
     public let resources: URL
     // Overridden only by isolated timeout tests; never terminates the VM itself.
     var environmentShutdownTimeout: TimeInterval = 60
+    var serverReleaseTimeout: TimeInterval = 45
     public let sharedDownloads: URL?
     public init(home: URL, resources: URL, sharedDownloads: URL? = nil) { self.home = home; self.resources = resources; self.sharedDownloads = sharedDownloads }
     public var data: URL { home.appendingPathComponent("data") }
