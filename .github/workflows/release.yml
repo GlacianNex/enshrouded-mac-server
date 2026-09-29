@@ -1,0 +1,82 @@
+name: Prepare Release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version (for example 1.0.0)
+        required: true
+        type: string
+      notarize:
+        description: Sign with Developer ID and notarize (requires Apple secrets)
+        type: boolean
+        default: false
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: macos-15
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate version and test
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+          swift test
+      - name: Import Developer ID certificate
+        if: inputs.notarize
+        env:
+          CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          test -n "$CERTIFICATE" && test -n "$IDENTITY"
+          certificate_path="$RUNNER_TEMP/signing.p12"
+          keychain_path="$RUNNER_TEMP/signing.keychain-db"
+          keychain_password="$(uuidgen)"
+          echo "::add-mask::$keychain_password"
+          printf '%s' "$CERTIFICATE" | base64 --decode > "$certificate_path"
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security import "$certificate_path" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain_path"
+          security set-key-partition-list -S apple-tool:,apple: -k "$keychain_password" "$keychain_path"
+          security list-keychains -d user -s "$keychain_path"
+          echo "SIGNING_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+      - name: Build app
+        run: bash scripts/build.sh
+      - name: Notarize and staple
+        if: inputs.notarize
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          xcrun notarytool store-credentials ESM_NOTARY --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD"
+          NOTARY_PROFILE=ESM_NOTARY bash scripts/notarize.sh
+      - name: Preserve Apple notarization diagnostics
+        if: always() && inputs.notarize
+        uses: actions/upload-artifact@v4
+        with:
+          name: apple-notarization-diagnostics
+          path: dist/notarization/
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTARIZED: ${{ inputs.notarize }}
+        run: |
+          if [[ "$NOTARIZED" == true ]]; then
+            printf 'Developer ID signed and notarized. See README and verification notes for supported behavior and coverage.\n' > "$RUNNER_TEMP/notes.md"
+          else
+            printf 'Unnotarized preview: macOS may block first launch. This is a development artifact, not the notarized public download.\n' > "$RUNNER_TEMP/notes.md"
+          fi
+          prerelease_args=()
+          if [[ "$NOTARIZED" != true ]]; then prerelease_args+=(--prerelease); fi
+          gh release create "v$VERSION" dist/Enshrouded-Server-Manager-for-Mac.zip dist/SHA256SUMS.txt --draft "${prerelease_args[@]}" --title "Enshrouded Server Manager for Mac $VERSION" --notes-file "$RUNNER_TEMP/notes.md"
+      - name: Remove signing material
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/signing.p12"

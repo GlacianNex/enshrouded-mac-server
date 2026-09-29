@@ -1,0 +1,25 @@
+name: Build and Test
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate scripts
+        run: |
+          bash -n scripts/build.sh scripts/build-experimental.sh scripts/prepare-tools.sh scripts/notarize.sh Runtime/guest.sh
+          python3 -m py_compile Runtime/stop-server.py scripts/query-local.py
+      - name: Unit tests
+        run: swift test
+      - name: Build Apple Silicon app
+        run: bash scripts/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Enshrouded-Server-Manager-for-Mac-development
+          path: |
+            dist/Enshrouded-Server-Manager-for-Mac.zip
+            dist/SHA256SUMS.txt

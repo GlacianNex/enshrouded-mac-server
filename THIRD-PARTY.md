@@ -1,0 +1,17 @@
+# Third-Party Components
+
+The manager and original ember icon are MIT licensed. This is an unofficial community tool, not affiliated with Keen Games, Valve, or Apple.
+
+## Bundled
+
+- **Lima 2.2.0** — Apache-2.0. [Source and notices](https://github.com/lima-vm/lima/tree/v2.2.0). Upstream licenses and documentation are retained in the app under `Contents/Resources/Lima/share/doc/lima`. The unused macOS guest payload is omitted; this app uses Linux guests.
+
+## Downloaded During Setup
+
+- **Ubuntu 24.04 ARM64 and packages** — individual package licenses. Copyright notices are retained under `/usr/share/doc` in the environment. [Ubuntu images](https://cloud-images.ubuntu.com/).
+- **Box64 0.4.4** — MIT. [Source](https://github.com/ptitSeb/box64/tree/v0.4.4). Built during setup; its source archive remains in `/opt/esm/cache`.
+- **Wine 11.18 WOW64** — Wine LGPL and component licenses. [Build provider](https://github.com/Kron4ek/Wine-Builds/releases/tag/11.18), [Wine source](https://gitlab.winehq.org/wine/wine).
+- **DepotDownloader 3.4.0** — GPL-2.0. [Source](https://github.com/SteamRE/DepotDownloader/tree/DepotDownloader_3.4.0).
+- **Enshrouded dedicated server and Steam runtime** — proprietary publisher software downloaded from Valve. They are not bundled or relicensed.
+
+The release does not redistribute a prebuilt guest image, game binaries, game artwork, or game logos. macOS and Apple's virtualization framework provide the host platform. CrossOver, Docker Desktop, and Rosetta are not required.
