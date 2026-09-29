@@ -5,6 +5,7 @@ import ServiceManagement
 import EnshroudedCore
 
 @MainActor final class Model: ObservableObject {
+    @Published var setupProgress: SetupProgress?
     @Published var state = "Checking…"
     @Published var busy = false
     @Published var polling = false

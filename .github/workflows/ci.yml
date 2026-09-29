@@ -12,7 +12,8 @@ jobs:
       - name: Validate scripts
         run: |
           bash -n scripts/build.sh scripts/build-experimental.sh scripts/prepare-tools.sh scripts/notarize.sh scripts/verify-archive.sh scripts/apple-preflight.sh Runtime/guest.sh
-          python3 -m py_compile Runtime/stop-server.py scripts/query-local.py scripts/release-notes.py
+          python3 -m py_compile Runtime/stop-server.py scripts/query-local.py scripts/release-notes.py Runtime/download.py
+          python3 scripts/test-download.py
       - name: Unit tests
         run: swift test
       - name: Build Apple Silicon app

@@ -84,4 +84,6 @@ The manager source is MIT licensed. Third-party components retain their licenses
 
 This is an unofficial community tool, not affiliated with Keen Games, Valve, or Apple.
 
+The upcoming [0.1.3 candidate](docs/RELEASE-NOTES-0.1.3.md) adds setup download progress and server-file uninstall.
+
 The [Valheim reliability audit](docs/VALHEIM-PARITY.md) records the fixes transferred into 0.1.2 and their regression coverage.

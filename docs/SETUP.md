@@ -53,3 +53,13 @@ Use **Stop Server** before shutting down the Mac. Closing the management window 
 ## App Reported as Damaged
 
 Version 0.1.0 included hidden metadata files that could invalidate the app signature after extraction. Discard that download and get the [latest release](https://github.com/GlacianNex/enshrouded-mac-server/releases/latest). Extract it into a fresh folder before opening. Existing server data is unaffected.
+
+## Setup Progress and Uninstalling (0.1.3 Candidate)
+
+Setup lists Ubuntu, system packages, Box64, Wine, DepotDownloader, the official server, and optional Steam support libraries before installation. The 30 GB requirement is free disk space for extracted files, the private VM, and updates—not a 30 GB download. The VM has a 40 GiB virtual disk that grows as used; its capacity is not a download size.
+
+Setup shows current and upcoming steps, elapsed time, and reported download sizes. Ubuntu-image and compatibility-component downloads report live bytes and totals when available. Valve reports file progress and final compressed download bytes; Ubuntu reports package-batch download sizes. Building, extraction, and startup use an indeterminate indicator rather than an invented percentage.
+
+The destination is shown with an Open Folder button. The default is `~/Library/EnshroudedServer/`; extra profiles use `~/Library/ESM/<profile>/`. Wine, Box64, system packages, and DepotDownloader live inside that server's VM. The app contains the manager and bundled Lima launcher tools. Downloads are not added to the signed app bundle.
+
+Choose **Server Management → Server Files → Uninstall Server Files…** to stop and uninstall one server's downloaded binaries, VM, compatibility tools, and setup cache. Worlds, settings, logs, and backups remain, including saved data in the previous-install folder. A backup is made before removing an existing world’s installation. Failed shutdown or VM deletion prevents removal of the current server binaries. Reinstall with Set Up Server. The manager app and other servers are unaffected; shared caches created by older Lima versions are not purged.

@@ -7,6 +7,7 @@ struct ManagementView: View {
     @State private var settingsOpen = false
     @State private var logsOpen = false
     @State private var setupOpen = false
+    @State private var uninstallOpen = false
     var removeServer: () -> Void = {}
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -28,7 +29,7 @@ struct ManagementView: View {
             if model.state == "NOT_INSTALLED" {
                 GroupBox("Set up your Enshrouded server") {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("The manager downloads the server and prepares its free compatibility tools. Allow at least 30 GB of free space. First setup requires internet access.")
+                        Text("Setup downloads the server and its compatibility environment. Keep 30 GB free for installation and updates; this is not the download size.")
                         Button("Set Up Server") { setupOpen = true }.disabled(model.busy)
                     }.padding(8)
                 }
@@ -52,8 +53,11 @@ struct ManagementView: View {
                 Button("Server Settings") { settingsOpen = true }.disabled(model.state == "NOT_INSTALLED" || model.busy)
                 Button("Open Log") { logsOpen = true }
                 Button("Logs Folder") { NSWorkspace.shared.open(model.engine.data.appendingPathComponent("logs")) }
-                Button("Server Folder") { NSWorkspace.shared.open(model.engine.data.appendingPathComponent("server")) }
-                Button("Delete Server…", action: removeServer).disabled(!model.canEdit)
+                Menu("Server Files") {
+                    Button("Open Server Folder") { NSWorkspace.shared.open(model.engine.data.appendingPathComponent("server")) }
+                    Button("Uninstall Server Files…") { uninstallOpen = true }.disabled(model.busy || model.state == "NOT_INSTALLED")
+                    Button("Move Server to Recovery…", action: removeServer).disabled(!model.canEdit)
+                }
             }.font(.system(size: 11)).controlSize(.small)
             HStack {
                 Text(model.busy ? model.operationTitle : model.automationMessage).lineLimit(1)
@@ -65,6 +69,16 @@ struct ManagementView: View {
         .sheet(isPresented: $settingsOpen) { SettingsView(model: model, draft: model.settings) }
         .sheet(isPresented: $setupOpen) { SetupView(model: model, draft: model.settings) }
         .sheet(isPresented: $logsOpen) { LogsView(model: model) }
+        .confirmationDialog("Uninstall This Server’s Files?", isPresented: $uninstallOpen, titleVisibility: .visible) {
+            Button("Stop & Uninstall Server Files", role: .destructive) {
+                model.operation("Uninstalling server files…") { engine in
+                    try engine.uninstallServerFiles { chunk in Task { @MainActor in model.recordActivity(chunk) } }
+                }
+                logsOpen = true
+            }
+        } message: {
+            Text("Stops this server and removes its downloaded server files, VM, Wine, Box64, download tools, and setup cache. Keeps worlds, settings, backups, and the manager app. Other servers are unchanged. Reinstall later with Set Up Server.")
+        }
         .confirmationDialog("Update or repair the Enshrouded server?", isPresented: $model.showMaintenance, titleVisibility: .visible) {
             Button("Update Enshrouded Server") { model.run("update"); logsOpen = true }
         } message: { Text("Running servers must be empty. The manager saves and stops, backs up the world and configuration, then downloads and validates the latest files from Valve. A previously running server restarts; a stopped server stays stopped.") }

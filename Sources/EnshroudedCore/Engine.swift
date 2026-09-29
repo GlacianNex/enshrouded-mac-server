@@ -15,12 +15,15 @@ public struct Engine {
     public var lima: URL { resources.appendingPathComponent("Lima/bin/limactl") }
     public var serverConfig: URL { data.appendingPathComponent("server/enshrouded_server.json") }
 
+    public static let environmentImage = URL(string: "https://cloud-images.ubuntu.com/releases/noble/release-20260705/ubuntu-24.04-server-cloudimg-arm64.img")!
+    public static let environmentDigest = "7df0201546f75b8bcc1044594c806c35749421ad3c9bc1be2a3ab806cfae39cc"
+
     public static func yamlString(_ value: String) -> String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.withoutEscapingSlashes]
         return String(data: try! encoder.encode(value), encoding: .utf8)!
     }
-    public func vmConfiguration() -> String {
+    public func vmConfiguration(image: URL? = nil) -> String {
         """
         vmType: vz
         arch: aarch64
@@ -28,7 +31,7 @@ public struct Engine {
         memory: 8GiB
         disk: 40GiB
         images:
-        - location: https://cloud-images.ubuntu.com/releases/noble/release-20260705/ubuntu-24.04-server-cloudimg-arm64.img
+        - location: \(Self.yamlString(image?.path ?? Self.environmentImage.absoluteString))
           arch: aarch64
           digest: sha256:7df0201546f75b8bcc1044594c806c35749421ad3c9bc1be2a3ab806cfae39cc
         mountType: virtiofs
@@ -125,7 +128,7 @@ public struct Engine {
         let files = FileManager.default
         let runtime = home.appendingPathComponent("runtime")
         // Read the complete bundle payload before changing any installed helper.
-        let helpers = try ["guest.sh", "stop-server.py"].map { name in
+        let helpers = try ["guest.sh", "stop-server.py", "download.py"].map { name in
             (name, try Data(contentsOf: resources.appendingPathComponent("Runtime/" + name)))
         }
         try files.createDirectory(at: runtime, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
@@ -196,7 +199,6 @@ public struct Engine {
                 try fm.createDirectory(at: home.appendingPathComponent(name), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             }
             let config = home.appendingPathComponent("engine.yaml")
-            try vmConfiguration().write(to: config, atomically: true, encoding: .utf8)
             if !fm.fileExists(atPath: home.appendingPathComponent("lima/engine/lima.yaml").path) {
                 #if !arch(arm64)
                 throw EngineError("This runtime requires an Apple Silicon Mac")
@@ -204,7 +206,12 @@ public struct Engine {
                 let disk = try fm.attributesOfFileSystem(forPath: home.path)
                 guard (disk[.systemFreeSize] as? NSNumber)?.uint64Value ?? 0 >= 30 * 1_073_741_824 else { throw EngineError("Free at least 30 GB before setting up the server") }
             }
-            output("Starting the private server environment…\n")
+            let image = home.appendingPathComponent("cache/ubuntu.img")
+            if !fm.fileExists(atPath: home.appendingPathComponent("lima/engine/lima.yaml").path) {
+                try SetupDownload.fetch(Self.environmentImage, destination: image, sha256: Self.environmentDigest, output: output)
+            }
+            try vmConfiguration(image: image).write(to: config, atomically: true, encoding: .utf8)
+            output(SetupEvent(.environment, "Starting the private server environment…").line)
             if !fm.fileExists(atPath: home.appendingPathComponent("lima/engine/lima.yaml").path) {
                 try command(["start", "--tty=false", "--name=engine", config.path], output: output)
                 try Data("Network forwarding configured at creation\n".utf8).write(to: home.appendingPathComponent("internet-forward-v1"), options: .atomic)

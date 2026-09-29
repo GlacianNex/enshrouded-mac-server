@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.3 — Candidate
+
+Explain download components and disk-space requirements before setup. Show installation steps, elapsed time, reported bytes and progress, and the server-data destination. Add server-file uninstall that removes the VM and compatibility tools while preserving worlds, settings and backups.
+
 ## 0.1.2 — 2026-09-29
 
 Fix installation relaunching into the installer. Transfer Valheim reliability safeguards for verified manager downloads, scheduling, backups, profile recovery, settings errors, log viewing, and monitoring. Preserve rollback data and server-resume markers after failures. Harden signing and release checks.

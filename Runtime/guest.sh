@@ -11,32 +11,35 @@ export BOX64_DYNAREC_STRONGMEM=1
 export BOX64_LD_LIBRARY_PATH="$ROOT/x86-libs"
 export PATH="$ROOT/wine/bin:/usr/local/bin:$PATH"
 
+stage() {
+  printf '[ESM_SETUP] {"stage":"%s","message":"%s"}\n' "$1" "$2"
+}
 fetch() {
-  local url=$1 sha=$2 file=$3
-  if ! test -f "$file" || ! echo "$sha  $file" | sha256sum -c --status; then
-    curl -fL --retry 3 --connect-timeout 30 "$url" -o "$file.partial"
-    echo "$sha  $file.partial" | sha256sum -c
-    mv "$file.partial" "$file"
-  fi
+  python3 /mnt/esm-runtime/download.py "$1" "$2" "$3" "$4"
 }
 prepare() {
   test ! -f "$ROOT/ready-v1" || return 0
-  echo 'Preparing free compatibility tools…'
+  stage packages 'Downloading and installing Ubuntu system packages…'
   sudo env DEBIAN_FRONTEND=noninteractive apt-get update
   sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential cmake curl ca-certificates unzip xz-utils xvfb xauth python3 libx11-6 libxext6 libxinerama1 libxcomposite1 libxi6 libxkbregistry0 libxcursor1 libxfixes3 libxrandr2 libxrender1 libegl1 libfreetype6 libfontconfig1 libasound2t64 libpulse0 libgnutls30t64 libgl1 libvulkan1 libunwind8 libicu74
   sudo mkdir -p "$ROOT"
   sudo chown "$(id -u):$(id -g)" "$ROOT"
   mkdir -p "$ROOT/cache" "$DATA/logs" "$DATA/server" "$DATA/backups"
-  fetch https://github.com/ptitSeb/box64/archive/refs/tags/v0.4.4.tar.gz 99c6de4f509e46ab1de15df740d0e0ea338a7790efa3f67510dfbb975cc24029 "$ROOT/cache/box64.tar.gz"
+  stage box64 'Downloading processor compatibility tools…'
+  fetch https://github.com/ptitSeb/box64/archive/refs/tags/v0.4.4.tar.gz 99c6de4f509e46ab1de15df740d0e0ea338a7790efa3f67510dfbb975cc24029 "$ROOT/cache/box64.tar.gz" box64
   tar -xzf "$ROOT/cache/box64.tar.gz" -C "$ROOT"
+  stage box64 'Building processor compatibility tools; no download during this step…'
   cmake -S "$ROOT/box64-0.4.4" -B "$ROOT/box64-build" -DARM_DYNAREC=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
   cmake --build "$ROOT/box64-build" -j4
   sudo cmake --install "$ROOT/box64-build"
   sudo systemctl restart systemd-binfmt
-  fetch https://github.com/Kron4ek/Wine-Builds/releases/download/11.18/wine-11.18-amd64-wow64.tar.xz f899879b8c37e0b20adca19d147cf77436f3f1a37bf16d08d27fa7137a52b9ba "$ROOT/cache/wine.tar.xz"
+  stage wine 'Downloading Windows compatibility tools…'
+  fetch https://github.com/Kron4ek/Wine-Builds/releases/download/11.18/wine-11.18-amd64-wow64.tar.xz f899879b8c37e0b20adca19d147cf77436f3f1a37bf16d08d27fa7137a52b9ba "$ROOT/cache/wine.tar.xz" wine
+  stage wine 'Extracting Windows compatibility tools…'
   mkdir -p "$ROOT/wine"
   tar -xJf "$ROOT/cache/wine.tar.xz" -C "$ROOT/wine" --strip-components=1
-  fetch https://github.com/SteamRE/DepotDownloader/releases/download/DepotDownloader_3.4.0/DepotDownloader-linux-arm64.zip d9fb612ccebc1db8eeea3b4045d2221ec70431381393ce908fb72f01d4f9c812 "$ROOT/cache/downloader.zip"
+  stage downloader 'Downloading the server download tool…'
+  fetch https://github.com/SteamRE/DepotDownloader/releases/download/DepotDownloader_3.4.0/DepotDownloader-linux-arm64.zip d9fb612ccebc1db8eeea3b4045d2221ec70431381393ce908fb72f01d4f9c812 "$ROOT/cache/downloader.zip" downloader
   mkdir -p "$ROOT/downloader"
   unzip -qo "$ROOT/cache/downloader.zip" -d "$ROOT/downloader"
   chmod +x "$ROOT/downloader/DepotDownloader"
@@ -61,9 +64,10 @@ case "${1:-}" in
       trap 'if test "$target" != "$DATA/server"; then rm -rf -- "$target"; fi' EXIT
       cp -a --reflink=auto "$DATA/server/." "$target/"
     fi
-    echo 'Downloading Enshrouded from Steam…'
+    stage server 'Connecting to Valve and downloading the latest public server…'
     "$ROOT/downloader/DepotDownloader" -app 2278520 -os windows -osarch 64 -dir "$target" -validate | tee "$DATA/logs/latest-install.log"
     test -f "$target/enshrouded_server.exe"
+    stage steam 'Checking Steam support files; downloading only if needed…'
     if ! test -f "$target/steamclient64.dll"; then
       "$ROOT/downloader/DepotDownloader" -app 1007 -os windows -osarch 64 -dir "$ROOT/steam-redist" -validate
       for dll in steamclient64.dll tier0_s64.dll vstdlib_s64.dll; do

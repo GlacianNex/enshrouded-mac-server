@@ -3,7 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 channel="${RELEASE_CHANNEL:-stable}"
 [[ "$channel" == stable || "$channel" == experimental ]] || { echo 'RELEASE_CHANNEL must be stable or experimental' >&2; exit 1; }
-version="${VERSION:-0.1.2}"
+version="${VERSION:-0.1.3}"
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'VERSION must use major.minor.patch' >&2; exit 1; }
 build_version="$(date -u +%y%m%d.%H%M.%S)"
 build_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -17,7 +17,7 @@ trap 'rm -rf "$staging"' EXIT
 app="$staging/Enshrouded Server Manager.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources/Runtime" "$app/Contents/Resources/Lima"
 cp "$binary_dir/EnshroudedManager" "$app/Contents/MacOS/EnshroudedManager"
-cp Runtime/guest.sh Runtime/stop-server.py "$app/Contents/Resources/Runtime/"
+cp Runtime/guest.sh Runtime/stop-server.py Runtime/download.py "$app/Contents/Resources/Runtime/"
 rm -f "$app/Contents/Resources/Runtime/stop-server.c"
 cp -R .tools/lima/. "$app/Contents/Resources/Lima/"
 # This app only boots Linux guests; omit Lima's unused macOS guest payload.
