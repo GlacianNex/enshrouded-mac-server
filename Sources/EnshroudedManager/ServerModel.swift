@@ -42,20 +42,25 @@ import EnshroudedCore
     var managerUpdateHandler: (() -> Void)?
     var fleetEngines: [Engine] = []
     let engine: Engine
+    private let activityWriter = DispatchQueue(label: "EnshroudedManager.activity")
     private var timer: Timer?
     private var lastCounter: (Date, RuntimeMetrics)?
     private var memorySeries = PerformanceHistory()
     private var segment = 0
-    private var lastPeerPosition: UInt64 = 0
+    private var lastPeerIdentity: String?
+    private var lastStatsIdentity: String?
+    private var lastLogSize: UInt64 = 0
     private var assertion: IOPMAssertionID = 0
     private let preferences: UserDefaults
-    init(homeOverride: URL? = nil) {
+    init(homeOverride: URL? = nil, automaticStartup: Bool = true) {
+        startupHandled = !automaticStartup
         let env = ProcessInfo.processInfo.environment
         let home = homeOverride ?? (env["ESM_HOME"] ?? UserDefaults.standard.string(forKey: "serverHome")).map { URL(fileURLWithPath: $0) } ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/EnshroudedServer")
         let resources = env["ESM_RESOURCES"].map { URL(fileURLWithPath: $0) } ?? Bundle.main.resourceURL!
         engine = Engine(home: home, resources: resources)
         preferences = UserDefaults(suiteName: "com.glaciannex.enshrouded-manager.\(home.path.data(using: .utf8)!.base64EncodedString())")!
         keepAwake = preferences.object(forKey: "keepAwake") as? Bool ?? true
+        activity = engine.activityTail()
         automation = engine.loadAutomation()
         loadSettings()
         refresh()
@@ -81,6 +86,10 @@ import EnshroudedCore
         guard state == "RUNNING", let lastPeers, Date().timeIntervalSince(lastPeers) < 90 else { return "Players: checking…" }
         return "\(snapshot.peers.count) reported connection\(snapshot.peers.count == 1 ? "" : "s")"
     }
+    var currentUpdateRate: Double? {
+        guard state == "RUNNING", let lastStats, Date().timeIntervalSince(lastStats) <= 90 else { return nil }
+        return snapshot.updateRate
+    }
     func loadSettings() {
         if let value = try? engine.readSettings() { settings = value }
         else if let data = try? Data(contentsOf: engine.home.appendingPathComponent("initial-settings.json")), let config = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { settings = ServerSettings(config: config) }
@@ -91,16 +100,16 @@ import EnshroudedCore
         let engine = engine
         Task {
             do {
-                let result = try await Task.detached { () -> (String, String, RuntimeMetrics?, [WorldBackup], Int?) in
+                let result = try await Task.detached { () -> (String, LogTailSnapshot, RuntimeMetrics?, [WorldBackup], Int?) in
                     let state = try engine.status()
                     let metrics = state == "RUNNING" ? try? engine.metrics() : nil
-                    return (state, engine.logTail(), metrics, engine.backups(), state == "RUNNING" ? metrics?.playerCount : 0)
+                    return (state, engine.logTailSnapshot(), metrics, engine.backups(), state == "RUNNING" ? metrics?.playerCount : 0)
                 }.value
                 let now = Date()
                 playerCount = result.4
-                state = result.0; serverLog = result.1; metrics = result.2; backups = result.3
+                state = result.0; serverLog = result.1.text; metrics = result.2; backups = result.3
                 localAddresses = ConnectionInfo.localAddresses()
-                let parsed = LogSnapshot.parse(serverLog)
+                let parsed = result.1.parsed
                 if let ip = parsed.publicIP { publicAddress = ip }
                 if state == "RUNNING", let m = metrics, m.active {
                     if let old = lastCounter, old.1.invocation == m.invocation, now.timeIntervalSince(old.0) < 20, m.cpuSeconds >= old.1.cpuSeconds {
@@ -111,14 +120,15 @@ import EnshroudedCore
                     memorySeries.record(m.memoryBytes / 1_073_741_824, at: now, segment: segment)
                     memoryHistory = memorySeries.points
                     lastCounter = (now, m)
-                    if parsed.statsLine != snapshot.statsLine, let value = parsed.updateRate {
+                    if result.1.fileSize < lastLogSize { lastStatsIdentity = nil; lastPeerIdentity = nil }
+                    lastLogSize = result.1.fileSize
+                    if let identity = result.1.identityFor(relativeEnd: parsed.statsReportEnd).map({ m.invocation + ":" + $0 }), identity != lastStatsIdentity,
+                       let value = parsed.updateRate {
+                        lastStatsIdentity = identity
                         lastStats = now; updateHistory.append(.init(date: now, value: value, segment: segment))
                     }
-                    let size = (try? FileManager.default.attributesOfItem(atPath: engine.data.appendingPathComponent("logs/server.log").path)[.size] as? NSNumber)?.uint64Value ?? 0
-                    let base = size > UInt64(serverLog.utf8.count) ? size - UInt64(serverLog.utf8.count) : 0
-                    let position = base + UInt64(parsed.peerReportEnd)
-                    if parsed.peerReportEnd > 0 && position != lastPeerPosition {
-                        lastPeerPosition = position; lastPeers = now
+                    if let identity = result.1.identityFor(relativeEnd: parsed.peerReportEnd).map({ m.invocation + ":" + $0 }), identity != lastPeerIdentity {
+                        lastPeerIdentity = identity; lastPeers = now
                         for peer in parsed.peers { pingHistory[peer.id, default: []].append(.init(date: now, value: peer.ping, segment: segment)) }
                     }
                 } else { lastCounter = nil; lastStats = nil; lastPeers = nil }
@@ -129,31 +139,43 @@ import EnshroudedCore
                 lastCheck = now
                 updateSleepAssertion()
             } catch {
-                metrics = nil; playerCount = nil; lastCounter = nil; self.error = "Status check failed: " + error.localizedDescription
+                metrics = nil; playerCount = nil; lastCounter = nil; lastStats = nil; lastPeers = nil; self.error = "Status check failed: " + error.localizedDescription
                 // Preserve an existing sleep assertion during a transient monitoring failure.
             }
             polling = false
             afterRefresh()
         }
     }
-    func operation(_ title: String, work: @escaping (Engine) throws -> Void) {
-        guard !busy else { return }
-        busy = true; operationTitle = (polling || checkingRelease) ? "Waiting for status check…" : title; error = nil; activity += "\n\(title)…\n"
+    func operation(_ title: String, work: @escaping (Engine) throws -> Void, completion: ((Bool) -> Void)? = nil) {
+        guard !busy else { completion?(false); return }
+        busy = true; operationTitle = (polling || checkingRelease) ? "Waiting for status check…" : title; error = nil; recordActivity("\n\(title)…\n")
         let engine = engine
         Task {
             while polling || checkingRelease { try? await Task.sleep(for: .milliseconds(100)) }
             operationTitle = title
-            do { try await Task.detached { try work(engine) }.value; activity += "\(title) completed.\n" }
-            catch { self.error = error.localizedDescription; activity += "\(title) failed: \(error.localizedDescription)\n" }
+            var succeeded = false
+            do { try await Task.detached { try work(engine) }.value; recordActivity("\(title) completed.\n"); succeeded = true }
+            catch { self.error = error.localizedDescription; recordActivity("\(title) failed: \(error.localizedDescription)\n") }
             activity = String(activity.suffix(40_000))
-            busy = false; loadSettings(); refresh()
+            if succeeded, let cached = release { release = ServerRelease(installed: engine.installedManifest, latest: cached.latest) }
+            busy = false; loadSettings(); completion?(succeeded); refresh()
         }
+    }
+    func flushActivity() async {
+        await withCheckedContinuation { continuation in
+            activityWriter.async { continuation.resume() }
+        }
+    }
+    func recordActivity(_ text: String) {
+        activity = String((activity + text).suffix(256_000))
+        let engine = engine
+        activityWriter.async { try? engine.appendActivity(text) }
     }
     func run(_ action: String) {
         let titles = ["start": "Starting…", "stop": "Saving & stopping…", "restart": "Restarting…", "update": "Updating server…", "install": "Setting up server…", "shutdown": "Shutting down…"]
         operation(titles[action] ?? action.capitalized) { engine in
             try engine.perform(action) { chunk in Task { @MainActor in
-                self.activity = String((self.activity + chunk).suffix(40_000))
+                self.recordActivity(chunk)
                 if chunk.hasPrefix("Saving and stopping") { self.operationTitle = "Saving & stopping…" }
                 if chunk.hasPrefix("Backing up and updating") { self.operationTitle = "Updating server…" }
                 if chunk.hasPrefix("Starting server") { self.operationTitle = "Starting…" }
@@ -164,6 +186,10 @@ import EnshroudedCore
     func backup(_ name: String) { operation("Create backup") { try $0.createBackup(name: name) } }
     func restore(_ id: String) { operation("Restore backup") { try $0.restoreBackup(id: id) } }
     func copy(_ value: String) { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(value, forType: .string) }
+    func retire() {
+        timer?.invalidate(); timer = nil
+        if assertion != 0 { IOPMAssertionRelease(assertion); assertion = 0 }
+    }
     func updateSleepAssertion() {
         if keepAwake && state == "RUNNING" && assertion == 0 {
             IOPMAssertionCreateWithName(kIOPMAssertionTypePreventUserIdleSystemSleep as CFString, IOPMAssertionLevel(kIOPMAssertionLevelOn), "Hosting Enshrouded" as CFString, &assertion)
@@ -191,12 +217,20 @@ extension Model {
             startupHandled = true
             let resume = engine.home.appendingPathComponent("resume-after-manager-update")
             let shouldResume = FileManager.default.fileExists(atPath: resume.path)
-            if shouldResume { try? FileManager.default.removeItem(at: resume) }
-            if stopped && (shouldResume || automation.startAtLogin) { run("start"); return }
+            if state == "RUNNING" && shouldResume { try? FileManager.default.removeItem(at: resume) }
+            if stopped && (shouldResume || automation.startAtLogin) {
+                operation("Starting…", work: { engine in
+                    try engine.perform("start", output: { _ in })
+                    if shouldResume { try? FileManager.default.removeItem(at: resume) }
+                })
+                return
+            }
         }
         if Date() >= nextReleaseCheck { checkUpdates(allowBoot: false) }
         if stopped, let due = automation.nextRestart, Date() >= due {
-            automation.nextRestart = automation.next(after: Date()); try? engine.saveAutomation(automation)
+            var updated = automation; updated.nextRestart = updated.next(after: Date()); updated.waitingRestart = nil
+            do { try engine.saveAutomation(updated); automation = updated }
+            catch { self.error = error.localizedDescription; return }
         }
         guard !checkingRelease, !busy else { return }
         if var schedule = automation.scheduledBackups, schedule.enabled,
@@ -234,27 +268,40 @@ extension Model {
         if automation.automaticUpdates, let release, release.updateAvailable, releaseCheckedAt.map({ Date().timeIntervalSince($0) < 900 }) == true,
            automation.lastAutomaticManifest != release.latest {
             guard playerCount == 0 else { automationMessage = "Update waiting for a confirmed empty server."; return }
-            automation.lastAutomaticManifest = release.latest
-            do { try engine.saveAutomation(automation) } catch { self.error = error.localizedDescription; return }
+            var updated = automation; updated.lastAutomaticManifest = release.latest
+            do { try engine.saveAutomation(updated); automation = updated } catch { self.error = error.localizedDescription; return }
             automationAttempt = Date(); automationMessage = "Automatic server update started."
             run("update"); return
         }
         if automation.restartEnabled {
-            if automation.nextRestart == nil { automation.nextRestart = automation.next(after: Date()); try? engine.saveAutomation(automation) }
-            if let due = automation.nextRestart, Date() >= due {
-                guard playerCount == 0 else { automationMessage = "Scheduled restart waiting for a confirmed empty server."; return }
-                automation.nextRestart = automation.next(after: Date())
-                do { try engine.saveAutomation(automation) } catch { self.error = error.localizedDescription; return }
-                automationAttempt = Date(); automationMessage = "Scheduled restart started."
-                run("restart")
+            if automation.nextRestart == nil {
+                var updated = automation; updated.nextRestart = updated.next(after: Date())
+                do { try engine.saveAutomation(updated); automation = updated }
+                catch { self.error = error.localizedDescription; return }
+            }
+            let decision = ScheduledRestartPolicy.decide(automation: automation, now: Date(), running: true, players: playerCount)
+            if decision == .waiting {
+                if automation.waitingRestart != automation.nextRestart {
+                    var updated = automation; updated.waitingRestart = updated.nextRestart
+                    do { try engine.saveAutomation(updated); automation = updated }
+                    catch { self.error = error.localizedDescription; return }
+                }
+                automationMessage = "Scheduled restart waiting for a confirmed empty server."
+            } else if decision == .run || decision == .skip {
+                var updated = automation; updated.nextRestart = updated.next(after: Date()); updated.waitingRestart = nil
+                do { try engine.saveAutomation(updated); automation = updated }
+                catch { self.error = error.localizedDescription; return }
+                if decision == .run {
+                    automationAttempt = Date(); automationMessage = "Scheduled restart started."; run("restart")
+                } else { automationMessage = "Missed scheduled restart skipped." }
             }
         }
     }
     func saveAutomation(_ value: HostingAutomation) {
         do {
-            var value = value
+            var value = value.reconcilingRestart(with: automation)
             guard !value.restartEnabled || (value.everyDays ?? 1) > 1 || !value.weekdays.isEmpty else { throw EngineError("Choose at least one restart weekday") }
-            value.nextRestart = value.next(after: Date())
+            if value.automaticUpdates && !automation.automaticUpdates { value.lastAutomaticManifest = nil }
             if var schedule = value.scheduledBackups {
                 guard (0...23).contains(schedule.hour), (0...59).contains(schedule.minute) else { throw EngineError("Choose a valid backup time") }
                 let previous = automation.scheduledBackups
@@ -263,8 +310,11 @@ extension Model {
                 }
                 value.scheduledBackups = schedule
             }
-            if value.startAtLogin && SMAppService.mainApp.status != .enabled { try SMAppService.mainApp.register() }
-            if !value.startAtLogin && automation.startAtLogin && !fleetEngines.contains(where: { $0.home != engine.home && $0.loadAutomation().startAtLogin }) { try SMAppService.mainApp.unregister() }
+            guard ProcessInfo.processInfo.environment["ESM_HOME"] == nil || value.startAtLogin == automation.startAtLogin else {
+                throw EngineError("Login startup is unavailable in an isolated test environment.")
+            }
+            if value.startAtLogin && ProcessInfo.processInfo.environment["ESM_HOME"] == nil && SMAppService.mainApp.status != .enabled { try SMAppService.mainApp.register() }
+            if ProcessInfo.processInfo.environment["ESM_HOME"] == nil && !value.startAtLogin && automation.startAtLogin && !fleetEngines.contains(where: { $0.home != engine.home && $0.loadAutomation().startAtLogin }) { try SMAppService.mainApp.unregister() }
             try engine.saveAutomation(value); automation = value; automationMessage = "Hosting automation saved."
         } catch { self.error = "Could not save automation: \(error.localizedDescription)" }
     }

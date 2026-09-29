@@ -17,6 +17,7 @@ struct BackupsView: View {
                 ForEach(model.backups) { backup in
                     VStack(alignment: .leading, spacing: 4) {
                         Text(backup.name)
+                        if !backup.hasIntegrityManifest { Text("Legacy backup · no integrity record").font(.caption).foregroundStyle(.secondary) }
                         Text(backup.date.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
                     }.padding(.vertical, 4).tag(backup.id)
                 }

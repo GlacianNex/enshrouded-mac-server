@@ -2,6 +2,14 @@ import XCTest
 @testable import EnshroudedCore
 
 final class ManagerTests: XCTestCase {
+    func testSettingsRejectPasswordsAlreadyUsedByCustomRoles() throws {
+        var settings = ServerSettings()
+        settings.password = "player-secret"; settings.adminPassword = "admin-secret"
+        let original: [String: Any] = ["userGroups": [["name": "Visitor", "password": "admin-secret"]]]
+        XCTAssertThrowsError(try settings.applying(to: original))
+        settings.adminPassword = "different-admin"
+        XCTAssertNoThrow(try settings.applying(to: original))
+    }
     func testSettingsPreserveRolesBansAndCustomDifficulty() throws {
         let original: [String: Any] = ["name": "World", "slotCount": 7, "gameSettings": ["health": 2], "bans": [["displayName": "blocked"]], "userGroups": [["name": "Friend", "password": "old-password", "canEditBase": false, "futurePermission": 7], ["name": "Visitor", "password": "visitor-pass"]]]
         var settings = ServerSettings(config: original)
@@ -43,7 +51,8 @@ final class ManagerTests: XCTestCase {
     func fixture() throws -> Engine {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let engine = Engine(home: root, resources: root)
-        for path in ["Lima/bin", "lima/engine", "data/server/savegame"] { try FileManager.default.createDirectory(at: root.appendingPathComponent(path), withIntermediateDirectories: true) }
+        for path in ["Lima/bin", "lima/engine", "data/server/savegame", "Runtime"] { try FileManager.default.createDirectory(at: root.appendingPathComponent(path), withIntermediateDirectories: true) }
+        for name in ["guest.sh", "stop-server.py"] { try Data("fixture".utf8).write(to: root.appendingPathComponent("Runtime/" + name)) }
         try Data().write(to: root.appendingPathComponent("lima/engine/lima.yaml"))
         try "#!/bin/sh\necho Stopped\n".write(to: engine.lima, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: engine.lima.path)

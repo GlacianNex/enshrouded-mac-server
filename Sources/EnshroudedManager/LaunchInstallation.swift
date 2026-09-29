@@ -23,7 +23,7 @@ import EnshroudedCore
         let others = NSRunningApplication.runningApplications(withBundleIdentifier: identifier).filter {
             $0.processIdentifier != ProcessInfo.processInfo.processIdentifier && $0.processIdentifier != predecessor && !$0.isTerminated
         }
-        let existing = others.first(where: { $0.bundleURL?.resolvingSymlinksInPath().standardizedFileURL == destination })
+        let existing = others.first(where: { $0.bundleURL.map { ManagerInstallation.sameLocation($0, destination) } == true })
         let plan = ManagerLaunchPlan.decide(source: source, destination: destination, destinationIsRunning: existing != nil)
         if plan != .install {
             if let existing, plan == .activateExisting {

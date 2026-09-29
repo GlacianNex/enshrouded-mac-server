@@ -2,8 +2,12 @@ import Foundation
 import Darwin
 
 public enum ManagerInstallation {
+    public static func sameLocation(_ lhs: URL, _ rhs: URL) -> Bool {
+        lhs.resolvingSymlinksInPath().standardizedFileURL.path == rhs.resolvingSymlinksInPath().standardizedFileURL.path
+    }
+
     public static func validate(_ source: URL, replacing destination: URL) throws -> BuildInfo {
-        guard source.standardizedFileURL.resolvingSymlinksInPath() != destination.standardizedFileURL.resolvingSymlinksInPath() else { throw EngineError("That is the app already running") }
+        guard !sameLocation(source, destination) else { throw EngineError("That is the app already running") }
         let incoming = try BuildInfo.read(app: source)
         let installed = try BuildInfo.read(app: destination)
         guard incoming.canReplace(installed) else { throw EngineError("This stable version is already installed or newer.") }
@@ -34,6 +38,16 @@ public enum ManagerInstallation {
         for case let entry as URL in entries { try clearQuarantine(entry) }
         if let enumerationError { throw enumerationError }
     }
+    static func replacePrepared(_ staged: URL, destination: URL, previous: URL, replacing: Bool,
+                                move: (URL, URL) throws -> Void = { try FileManager.default.moveItem(at: $0, to: $1) }) throws {
+        if replacing { try move(destination, previous) }
+        do { try move(staged, destination) }
+        catch {
+            do { if replacing { try move(previous, destination) } }
+            catch { throw EngineError("App replacement failed. Previous app remains at \(previous.path)") }
+            throw error
+        }
+    }
     /// Keep Previous.app for recovery until the new build has been used successfully.
     public static func replace(_ source: URL, destination: URL, beforeReplace: () throws -> Void) throws -> URL {
         let fm = FileManager.default
@@ -58,13 +72,7 @@ public enum ManagerInstallation {
             // this staged copy, retaining the download and system security policy.
             try prepareInstalledCopy(staged)
             try beforeReplace()
-            if replacing { try fm.moveItem(at: destination, to: previous) }
-            do { try fm.moveItem(at: staged, to: destination) }
-            catch {
-                do { if replacing { try fm.moveItem(at: previous, to: destination) } }
-                catch { throw EngineError("App replacement failed. Previous app remains at \(previous.path)") }
-                throw error
-            }
+            try replacePrepared(staged, destination: destination, previous: previous, replacing: replacing)
             return previous
         } catch {
             if !fm.fileExists(atPath: previous.path) { try? fm.removeItem(at: transaction) }
@@ -77,7 +85,7 @@ public enum ManagerInstallation {
 public enum ManagerLaunchPlan: Equatable {
     case manage, activateExisting, install
     public static func decide(source: URL, destination: URL, destinationIsRunning: Bool) -> Self {
-        if source.resolvingSymlinksInPath().standardizedFileURL != destination.resolvingSymlinksInPath().standardizedFileURL { return .install }
+        if !ManagerInstallation.sameLocation(source, destination) { return .install }
         return destinationIsRunning ? .activateExisting : .manage
     }
 }
@@ -96,9 +104,15 @@ extension ManagerInstallation {
                 }
             }
         } catch {
+            var failures: [String] = []
             for engine in stopped {
-                try? FileManager.default.removeItem(at: engine.home.appendingPathComponent("resume-after-manager-update"))
-                try? engine.perform("start", output: {_ in})
+                do {
+                    try engine.perform("start", output: {_ in})
+                    try? FileManager.default.removeItem(at: engine.home.appendingPathComponent("resume-after-manager-update"))
+                } catch { failures.append(engine.home.lastPathComponent) }
+            }
+            if !failures.isEmpty {
+                throw EngineError("\(error.localizedDescription) Could not restart: \(failures.joined(separator: ", ")). Reopen the manager to retry.")
             }
             throw error
         }

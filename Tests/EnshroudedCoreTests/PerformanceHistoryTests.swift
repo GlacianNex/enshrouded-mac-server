@@ -32,6 +32,30 @@ final class PerformanceHistoryTests: XCTestCase {
         XCTAssertEqual(series.points.map(\.value), [2, 8])
         XCTAssertEqual(series.points.map(\.segment), [1, 2])
     }
+    func testChartBreaksMissingIntervalsWithoutDiscardingHistory() {
+        let start = Date(timeIntervalSince1970: 100)
+        let input = [0.0, 5, 15, 20].map { PerformancePoint(date: start.addingTimeInterval($0), value: 2, segment: 7) }
+        let chart = PerformanceHistory.chartPoints(input, maximumGap: 5)
+        XCTAssertEqual(chart.map(\.segment), [0, 0, 1, 1])
+        XCTAssertEqual(chart.map(\.id), input.map(\.id))
+        XCTAssertEqual(chart.map(\.date), input.map(\.date))
+    }
+    func testChartBreaksRestartsAndInvalidSamples() {
+        let start = Date(timeIntervalSince1970: 100)
+        let input = [
+            PerformancePoint(date: start, value: 2, segment: 1),
+            PerformancePoint(date: start.addingTimeInterval(1), value: 2, segment: 2),
+            PerformancePoint(date: start.addingTimeInterval(2), value: .nan, segment: 2),
+            PerformancePoint(date: start.addingTimeInterval(3), value: 2, segment: 2),
+            PerformancePoint(date: start.addingTimeInterval(2), value: 2, segment: 2)
+        ]
+        XCTAssertEqual(PerformanceHistory.chartPoints(input, maximumGap: 5).map(\.segment), [0, 1, 2, 3])
+    }
+    func testChartUsesMetricSpecificReportCadence() {
+        let start = Date(timeIntervalSince1970: 100)
+        let input = [0.0, 60, 120, 300].map { PerformancePoint(date: start.addingTimeInterval($0), value: 60) }
+        XCTAssertEqual(PerformanceHistory.chartPoints(input, maximumGap: 90).map(\.segment), [0, 0, 0, 1])
+    }
     func testTelemetryDistinguishesZeroFromUnavailablePlayers() throws {
         var packet: [UInt8] = [255,255,255,255,73,17]
         for value in ["Test", "World", "Game", "Enshrouded"] { packet += Array(value.utf8) + [0] }

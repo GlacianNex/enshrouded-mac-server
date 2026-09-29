@@ -40,6 +40,10 @@ public struct ServerSettings {
                 groups.append(["name": role, "password": secret, "canKickBan": role == "Admin", "canAccessInventories": true, "canEditWorld": true, "canEditBase": true, "canExtendBase": true, "reservedSlots": 0])
             }
         }
+        let secrets = groups.compactMap { $0["password"] as? String }
+        guard Set(secrets).count == secrets.count else {
+            throw EngineError("Use a different password for every role, including custom roles.")
+        }
         result["userGroups"] = groups
         return result
     }

@@ -11,8 +11,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Validate scripts
         run: |
-          bash -n scripts/build.sh scripts/build-experimental.sh scripts/prepare-tools.sh scripts/notarize.sh scripts/verify-archive.sh Runtime/guest.sh
-          python3 -m py_compile Runtime/stop-server.py scripts/query-local.py
+          bash -n scripts/build.sh scripts/build-experimental.sh scripts/prepare-tools.sh scripts/notarize.sh scripts/verify-archive.sh scripts/apple-preflight.sh Runtime/guest.sh
+          python3 -m py_compile Runtime/stop-server.py scripts/query-local.py scripts/release-notes.py
       - name: Unit tests
         run: swift test
       - name: Build Apple Silicon app

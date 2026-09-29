@@ -2,6 +2,34 @@ import XCTest
 @testable import EnshroudedCore
 
 final class InstallationTests: XCTestCase {
+    func testDirectoryURLRepresentationDoesNotTriggerReinstallation() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let before = root.appendingPathComponent("Manager.app").standardizedFileURL
+        try FileManager.default.createDirectory(at: before, withIntermediateDirectories: true)
+        let after = root.appendingPathComponent("Manager.app").standardizedFileURL
+        XCTAssertEqual(ManagerLaunchPlan.decide(source: after, destination: before, destinationIsRunning: false), .manage)
+        XCTAssertEqual(ManagerLaunchPlan.decide(source: before, destination: after, destinationIsRunning: true), .activateExisting)
+        let alias = root.appendingPathComponent("Alias.app")
+        try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: after)
+        XCTAssertTrue(ManagerInstallation.sameLocation(alias, before))
+    }
+    func testFailedAppMoveRestoresPreviousAndPreservesRecoveryOnRollbackFailure() throws {
+        for rollbackFails in [false, true] {
+            let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: root) }
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            let installed = root.appendingPathComponent("Installed"), staged = root.appendingPathComponent("New"), previous = root.appendingPathComponent("Previous")
+            try Data("old".utf8).write(to: installed); try Data("new".utf8).write(to: staged)
+            XCTAssertThrowsError(try ManagerInstallation.replacePrepared(staged, destination: installed, previous: previous, replacing: true) { source, destination in
+                if source == staged || (rollbackFails && source == previous) { throw EngineError("Disk failure") }
+                try FileManager.default.moveItem(at: source, to: destination)
+            })
+            XCTAssertEqual(try String(contentsOf: rollbackFails ? previous : installed), "old")
+            XCTAssertEqual(try String(contentsOf: staged), "new")
+        }
+    }
+
     func testApprovedInstallClearsOnlyCopiedQuarantine() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

@@ -3,6 +3,7 @@ import Foundation
 public struct ServerRelease: Equatable {
     public let installed: String?
     public let latest: String
+    public init(installed: String?, latest: String) { self.installed = installed; self.latest = latest }
     public var updateAvailable: Bool { installed != nil && installed != latest }
     public static func manifest(in text: String) -> String? {
         guard let expression = try? NSRegularExpression(pattern: #"(?m)^Manifest (\d+) \("#), let match = expression.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)), let range = Range(match.range(at: 1), in: text) else { return nil }
@@ -36,7 +37,7 @@ extension Engine {
     }
     private func fetchServerRelease() throws -> ServerRelease {
             let script = "mkdir -p /opt/esm/version-check; exec timeout 90 /opt/esm/downloader/DepotDownloader -app 2278520 -depot 2278521 -os windows -osarch 64 -manifest-only -dir /opt/esm/version-check"
-            let output = try command(["shell", "engine", "bash", "-lc", script], output: {_ in})
+            let output = try command(["shell", "engine", "bash", "-lc", script], timeout: 120, output: {_ in})
             guard let latest = ServerRelease.manifest(in: output) else { throw EngineError("Valve did not return a server manifest. Existing files are unaffected.") }
             return ServerRelease(installed: installedManifest, latest: latest)
     }

@@ -80,6 +80,7 @@ struct MetricGraph: View {
     let points: [PerformancePoint]
     let color: Color
     var fillsAvailableSpace = false
+    var maximumGap: TimeInterval = 45
     var body: some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 6) {
@@ -88,7 +89,7 @@ struct MetricGraph: View {
                 if points.isEmpty {
                     Text("Readings appear while the server is running.").font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: fillsAvailableSpace ? 0 : 175, maxHeight: fillsAvailableSpace ? .infinity : 175)
                 } else {
-                    Chart(points) { point in
+                    Chart(PerformanceHistory.chartPoints(points, maximumGap: maximumGap)) { point in
                         LineMark(x: .value("Time", point.date), y: .value(title, point.value), series: .value("Session", point.segment)).foregroundStyle(color)
                         PointMark(x: .value("Time", point.date), y: .value(title, point.value)).symbolSize(8).foregroundStyle(color)
                     }.chartXScale(domain: Date().addingTimeInterval(-PerformanceHistory.duration)...Date()).chartYScale(domain: .automatic(includesZero: true))
@@ -114,9 +115,9 @@ struct PerformanceView: View {
                     stat("MEMORY USED", model.metrics.map { String(format: "%.2f GB", $0.memoryBytes / 1_073_741_824) } ?? "—")
                     stat("LAST SAVE", model.snapshot.lastSaveCompleted ? "Completed in log" : "No completion in recent log")
                 }.padding(.vertical, 4).layoutPriority(1)
-                MetricGraph(title: "Server Speed (updates per second)", subtitle: "How often the game world advances · latest minute average: " + (model.snapshot.updateRate.map { String(format: "%.1f", $0) } ?? "—"), points: model.updateHistory, color: .blue, fillsAvailableSpace: true)
+                MetricGraph(title: "Server Speed (updates per second)", subtitle: "How often the game world advances · latest minute average: " + (model.currentUpdateRate.map { String(format: "%.1f", $0) } ?? "—"), points: model.updateHistory, color: .blue, fillsAvailableSpace: true, maximumGap: 90)
                     .help("Simulation speed, not your game's graphics FPS. Enshrouded publishes this average about once a minute; five-second simulation averages are unavailable.")
-                MetricGraph(title: "Server Memory (GB)", subtitle: "Memory used to run this server · 5-second averages", points: model.memoryHistory, color: .blue, fillsAvailableSpace: true)
+                MetricGraph(title: "Server Memory (GB)", subtitle: "Memory used to run this server · 5-second averages", points: model.memoryHistory, color: .blue, fillsAvailableSpace: true, maximumGap: 7.5)
                 Text("Last 3 hours · memory averaged over 5 seconds. Server speed uses Enshrouded’s minute reports.").font(.system(size: 10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).layoutPriority(1)
             }.padding(14).frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {

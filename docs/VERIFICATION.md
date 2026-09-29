@@ -1,5 +1,9 @@
 # Verification
 
+## Candidate 0.1.2
+
+93 automated tests pass. See the [Valheim audit](VALHEIM-PARITY.md) for transferred fixes, isolated UI checks, real release-download validation, and coverage limits.
+
 ## Release 0.1.1
 
 - Reproduced the 0.1.0 signature failure with ordinary ZIP extraction.

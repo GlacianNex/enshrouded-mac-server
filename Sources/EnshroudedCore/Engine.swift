@@ -59,13 +59,16 @@ public struct Engine {
     }
 
     @discardableResult
-    public func command(_ args: [String], output: @escaping (String) -> Void) throws -> String {
+    public func command(_ args: [String], timeout: TimeInterval? = nil, output: @escaping (String) -> Void) throws -> String {
         let process = Process(), pipe = Pipe()
         process.executableURL = lima
         process.arguments = args
         var env = ProcessInfo.processInfo.environment
         env["LIMA_HOME"] = home.appendingPathComponent("lima").path
         env["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
+        if let timeout {
+            return try DiagnosticCommand.run(executable: lima, arguments: args, environment: env, directory: home, timeout: timeout, output: output)
+        }
         process.environment = env
         process.currentDirectoryURL = home
         process.standardInput = FileHandle.nullDevice
@@ -90,9 +93,9 @@ public struct Engine {
 
     public func status() throws -> String {
         guard FileManager.default.fileExists(atPath: home.appendingPathComponent("lima/engine/lima.yaml").path) else { return "NOT_INSTALLED" }
-        let list = try command(["list", "engine", "--format={{.Status}}"], output: {_ in})
+        let list = try command(["list", "engine", "--format={{.Status}}"], timeout: 15, output: {_ in})
         guard list.trimmingCharacters(in: .whitespacesAndNewlines) == "Running" else { return "VM_STOPPED" }
-        return try command(["shell", "engine", "bash", "/mnt/esm-runtime/guest.sh", "status"], output: {_ in}).trimmingCharacters(in: .whitespacesAndNewlines)
+        return try command(["shell", "engine", "bash", "/mnt/esm-runtime/guest.sh", "status"], timeout: 15, output: {_ in}).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // Change only the application's game-port rule, preserving other VM settings.
@@ -118,6 +121,20 @@ public struct Engine {
         try Data("UDP 15637 enabled on all host IPv4 interfaces\n".utf8).write(to: marker, options: .atomic)
     }
 
+    func syncRuntimeHelpers() throws {
+        let files = FileManager.default
+        let runtime = home.appendingPathComponent("runtime")
+        // Read the complete bundle payload before changing any installed helper.
+        let helpers = try ["guest.sh", "stop-server.py"].map { name in
+            (name, try Data(contentsOf: resources.appendingPathComponent("Runtime/" + name)))
+        }
+        try files.createDirectory(at: runtime, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        for (name, data) in helpers {
+            let target = runtime.appendingPathComponent(name)
+            if (try? Data(contentsOf: target)) != data { try data.write(to: target, options: .atomic) }
+        }
+    }
+
     public func perform(_ action: String, output: @escaping (String) -> Void) throws {
         guard ["install", "update", "rollback", "restart", "start", "stop", "shutdown"].contains(action) else { throw EngineError("Unknown operation") }
         let fm = FileManager.default
@@ -138,7 +155,7 @@ public struct Engine {
         }
     }
 
-    private func performLocked(_ action: String, output: @escaping (String) -> Void) throws {
+    func performLocked(_ action: String, output: @escaping (String) -> Void) throws {
         let fm = FileManager.default
         if action == "rollback" {
             try requireStoppedWorld()
@@ -166,6 +183,7 @@ public struct Engine {
             }
             return
         }
+        if ["start", "stop", "shutdown", "install"].contains(action) { try syncRuntimeHelpers() }
         if action == "stop" || action == "shutdown" {
             let current = try status()
             if current == "NOT_INSTALLED" || current == "VM_STOPPED" { output("Server is already stopped.\n"); return }
@@ -176,10 +194,6 @@ public struct Engine {
             guard fm.isExecutableFile(atPath: lima.path) else { throw EngineError("Bundled runtime is missing. Rebuild or reinstall the app.") }
             for name in ["data", "data/server", "data/logs", "data/backups", "runtime", "lima"] {
                 try fm.createDirectory(at: home.appendingPathComponent(name), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-            }
-            for name in ["guest.sh", "stop-server.py"] {
-                let source = try Data(contentsOf: resources.appendingPathComponent("Runtime/\(name)"))
-                try source.write(to: home.appendingPathComponent("runtime/\(name)"), options: .atomic)
             }
             let config = home.appendingPathComponent("engine.yaml")
             try vmConfiguration().write(to: config, atomically: true, encoding: .utf8)

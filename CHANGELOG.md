@@ -2,7 +2,7 @@
 
 ## 0.1.2 — Candidate
 
-Fix installation relaunching into the installer and reporting that the same stable version is already installed. Apply Valheim’s quarantine handling to the verified installed copy. Restore the Enshrouded icon in the app and menu bar.
+Fix installation relaunching into the installer. Transfer Valheim reliability safeguards for verified manager downloads, scheduling, backups, profile recovery, settings errors, log viewing, and monitoring. Preserve rollback data and server-resume markers after failures. Harden signing and release checks.
 
 See the [0.1.2 candidate notes](docs/RELEASE-NOTES-0.1.2.md).
 

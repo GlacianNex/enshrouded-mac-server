@@ -47,7 +47,9 @@ import EnshroudedCore
     }
     private func rebuild() {
         menu.removeAllItems(); actions.removeAll()
-        add("Enshrouded Manager · \(fleet.selected.build.label)", to: menu)
+        if fleet.managerUpdateAvailable {
+            add("Enshrouded Manager · Update Available", to: menu, enabled: !fleet.models.contains(where: \.busy)) { self.fleet.updateManager() }
+        } else { add("Enshrouded Manager · \(fleet.selected.build.label)", to: menu) }
         menu.addItem(.separator())
         let busy = fleet.models.contains { $0.busy }
         if fleet.models.contains(where: { $0.release?.updateAvailable == true }) {

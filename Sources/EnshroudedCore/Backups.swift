@@ -1,11 +1,13 @@
 import Foundation
 import Darwin
+import CryptoKit
 
 public struct WorldBackup: Identifiable {
     public let id: String
     public let name: String
     public let date: Date
     public let url: URL
+    public let hasIntegrityManifest: Bool
 }
 
 extension Engine {
@@ -26,7 +28,7 @@ extension Engine {
                   let bytes = try? Data(contentsOf: url.appendingPathComponent("manifest.json")),
                   let manifest = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any],
                   let name = manifest["name"] as? String, let timestamp = manifest["created"] as? Double else { return nil }
-            return WorldBackup(id: url.lastPathComponent, name: name, date: Date(timeIntervalSince1970: timestamp), url: url)
+            return WorldBackup(id: url.lastPathComponent, name: name, date: Date(timeIntervalSince1970: timestamp), url: url, hasIntegrityManifest: manifest["files"] is [String: String])
         }.sorted { $0.date > $1.date }
     }
     // Never follow links into unrelated files while copying or restoring a world.
@@ -51,6 +53,8 @@ extension Engine {
     func copyBackup(name: String) throws -> URL {
         let fm = FileManager.default
         try validateTree(world)
+        var files = try backupInventory(world, prefix: "savegame/")
+        files["enshrouded_server.json"] = try backupDigest(serverConfig)
         try fm.createDirectory(at: backupDirectory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         let id = UUID().uuidString
         let staging = backupDirectory.appendingPathComponent(".\(id)")
@@ -59,8 +63,9 @@ extension Engine {
         defer { try? fm.removeItem(at: staging) }
         try fm.copyItem(at: world, to: staging.appendingPathComponent("savegame"))
         try fm.copyItem(at: serverConfig, to: staging.appendingPathComponent("enshrouded_server.json"))
+        guard try backupInventory(staging) == files else { throw EngineError("Backup verification failed. Your world is unchanged.") }
         let label = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let manifest: [String: Any] = ["name": label.isEmpty ? "World backup" : String(label.prefix(100)), "created": Date().timeIntervalSince1970]
+        let manifest: [String: Any] = ["name": label.isEmpty ? "World backup" : String(label.prefix(100)), "created": Date().timeIntervalSince1970, "integrityVersion": 1, "files": files]
         try JSONSerialization.data(withJSONObject: manifest).write(to: staging.appendingPathComponent("manifest.json"))
         try fm.moveItem(at: staging, to: final)
         return final
@@ -71,15 +76,30 @@ extension Engine {
             guard let backup = backups().first(where: { $0.id == id }) else { throw EngineError("Backup not found") }
             try validateTree(backup.url)
             try validateTree(backup.url.appendingPathComponent("savegame"))
+            let manifest = try JSONSerialization.jsonObject(with: Data(contentsOf: backup.url.appendingPathComponent("manifest.json"))) as? [String: Any] ?? [:]
+            let expected = manifest["files"] as? [String: String]
+            if manifest["integrityVersion"] != nil || manifest["files"] != nil {
+                guard manifest["integrityVersion"] as? Int == 1, let expected,
+                      expected["enshrouded_server.json"] != nil,
+                      try backupInventory(backup.url, excludingManifest: true) == expected else {
+                    throw EngineError("Backup verification failed. Your world is unchanged.")
+                }
+            }
             let configBytes = try Data(contentsOf: backup.url.appendingPathComponent("enshrouded_server.json"))
             guard let config = try JSONSerialization.jsonObject(with: configBytes) as? [String: Any],
                   ["./savegame", "savegame"].contains(config["saveDirectory"] as? String ?? "./savegame") else { throw EngineError("Backup configuration is invalid") }
             let fm = FileManager.default
-            let recovery = try copyBackup(name: "Before restoring \(backup.name)")
             let stage = data.appendingPathComponent("server/.restore-\(UUID().uuidString)")
             let previous = data.appendingPathComponent("server/.previous-\(UUID().uuidString)")
             try fm.copyItem(at: backup.url.appendingPathComponent("savegame"), to: stage)
             defer { try? fm.removeItem(at: stage) }
+            if let expected {
+                guard try backupInventory(stage, prefix: "savegame/") == expected.filter({ $0.key.hasPrefix("savegame/") }),
+                      SHA256.hash(data: configBytes).map({ String(format: "%02x", $0) }).joined() == expected["enshrouded_server.json"] else {
+                    throw EngineError("Restore verification failed. Your world is unchanged.")
+                }
+            }
+            let recovery = try copyBackup(name: "Before restoring \(backup.name)")
             try fm.moveItem(at: world, to: previous)
             do {
                 try fm.moveItem(at: stage, to: world)
@@ -93,6 +113,28 @@ extension Engine {
             }
             try? fm.removeItem(at: previous)
         }
+    }
+    private func backupDigest(_ file: URL) throws -> String {
+        let values = try file.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+        guard values.isRegularFile == true, values.isSymbolicLink != true else { throw EngineError("Backups cannot contain symbolic links or unsupported files") }
+        let handle = try FileHandle(forReadingFrom: file)
+        defer { try? handle.close() }
+        var digest = SHA256()
+        while let bytes = try handle.read(upToCount: 1_048_576), !bytes.isEmpty { digest.update(data: bytes) }
+        return digest.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+    private func backupInventory(_ root: URL, prefix: String = "", excludingManifest: Bool = false) throws -> [String: String] {
+        try validateTree(root)
+        guard let entries = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.isRegularFileKey]) else { throw EngineError("Cannot read backup files") }
+        var files: [String: String] = [:]
+        for case let file as URL in entries {
+            let relative = file.resolvingSymlinksInPath().pathComponents.dropFirst(root.resolvingSymlinksInPath().pathComponents.count).joined(separator: "/")
+            if excludingManifest && relative == "manifest.json" { continue }
+            if try file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true {
+                files[prefix + relative] = try backupDigest(file)
+            }
+        }
+        return files
     }
 }
 

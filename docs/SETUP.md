@@ -32,7 +32,7 @@ To restore, stop the server, select a backup, and choose **Restore Selected**. T
 
 ## Manager Updates
 
-Open a newly downloaded release and choose **Stop, Update & Relaunch**. The manager saves and stops running servers, replaces the app in Applications, and restarts those servers. Connected players will be disconnected during this operation. Stopped servers stay stopped.
+In 0.1.2, use the menu’s update-available version row, or open a newly downloaded release and choose **Stop, Update & Relaunch**. The manager saves and stops running servers, replaces the app in Applications, and restarts those servers. Connected players will be disconnected during this operation. Stopped servers stay stopped.
 
 Cancellation leaves the installation unchanged. If server maintenance is already running, let it finish. If an older manager will not quit, close its Settings/Logs window and try again. The app never force-kills the running manager to replace it.
 

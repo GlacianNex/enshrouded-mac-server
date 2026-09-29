@@ -35,7 +35,18 @@ struct AccessSettingsView: View {
                 }.disabled(!model.canEdit)
             }
             if let error { Text(error).foregroundStyle(.orange).font(.caption) }
-            HStack { Button("Cancel") { dismiss() }; Spacer(); Button("Save Roles & Bans") { let draft = roles, removed = removedBans; model.operation("Save roles and bans") { try $0.saveAccess(draft, removingBans: removed) }; dismiss() }.disabled(!model.canEdit || roles.isEmpty) }
+            HStack {
+                Button("Cancel") { dismiss() }.disabled(model.busy)
+                Spacer()
+                Button("Save Roles & Bans") {
+                    let draft = roles, removed = removedBans
+                    error = nil
+                    model.operation("Save roles and bans", work: { try $0.saveAccess(draft, removingBans: removed) }, completion: { success in
+                        if success { dismiss() }
+                        else { error = model.error ?? "Roles and bans could not be saved. Try again." }
+                    })
+                }.disabled(!model.canEdit || roles.isEmpty)
+            }
         }.padding(22).frame(width: 610, height: 680).onAppear {
             do { roles = try model.engine.accessRoles(); bans = try model.engine.savedBans() } catch { self.error = error.localizedDescription }
         }

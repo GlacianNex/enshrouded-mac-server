@@ -47,7 +47,7 @@ The manager prevents idle sleep while hosting by default. Quitting it leaves run
 
 **Official Enshrouded server updates** are checked every ten minutes while the server environment is on. Manual checks can temporarily start a stopped environment. Updates stage and validate files before replacing them, preserve settings and worlds, and retain the previous installation. Running servers must be confirmed empty. Automatic server updates are optional.
 
-**Manager app updates** are separate. Download a release, open the app, and choose **Stop, Update & Relaunch**. This saves and stops all running servers, installs the manager, and restarts those servers afterward—even if players are connected. Stopped servers stay stopped. The app has no automatic GitHub manager-download feed in v0.1.
+**Manager app updates** are separate. Download a release, open the app, and choose **Stop, Update & Relaunch**. This saves and stops all running servers, installs the manager, and restarts those servers afterward—even if players are connected. Stopped servers stay stopped. In the 0.1.2 candidate, the version row offers verified stable manager downloads when an update is available; installation still requires confirmation.
 
 ## Data and Runtime
 
@@ -83,3 +83,5 @@ For local experimental builds, use `bash scripts/build-experimental.sh`. These d
 The manager source is MIT licensed. Third-party components retain their licenses. The Enshrouded icon identifies the supported game and is excluded from the MIT license; game artwork and trademarks belong to their respective owners. No game binaries are included in the release.
 
 This is an unofficial community tool, not affiliated with Keen Games, Valve, or Apple.
+
+The [Valheim reliability audit](docs/VALHEIM-PARITY.md) records the fixes transferred into the 0.1.2 candidate and their regression coverage.

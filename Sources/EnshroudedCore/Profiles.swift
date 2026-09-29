@@ -12,15 +12,32 @@ public struct ProfileStore {
     public init(registry: URL) { self.registry = registry }
     public func load() throws -> [ServerProfile] {
         guard FileManager.default.fileExists(atPath: registry.path) else { return [] }
-        return try JSONDecoder().decode([ServerProfile].self, from: Data(contentsOf: registry))
+        let profiles = try JSONDecoder().decode([ServerProfile].self, from: Data(contentsOf: registry))
+        try validate(profiles)
+        return profiles
     }
     public func save(_ profiles: [ServerProfile]) throws {
-        guard Set(profiles.map(\.id)).count == profiles.count,
-              Set(profiles.map(\.home)).count == profiles.count,
-              Set(profiles.map(\.port)).count == profiles.count,
-              profiles.allSatisfy({ (1024...65535).contains($0.port) && $0.home.hasPrefix("/") }) else { throw EngineError("Every server needs a unique data folder and UDP port from 1024–65535") }
+        try validate(profiles)
         try FileManager.default.createDirectory(at: registry.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         try JSONEncoder().encode(profiles).write(to: registry, options: .atomic)
+    }
+    private func validate(_ profiles: [ServerProfile]) throws {
+        guard Set(profiles.map(\.id)).count == profiles.count,
+              Set(profiles.map(\.port)).count == profiles.count,
+              profiles.allSatisfy({ !$0.id.isEmpty && (1024...65535).contains($0.port) && $0.home.hasPrefix("/") && !$0.home.contains("\0") }) else {
+            throw EngineError("Every server needs a unique data folder and UDP port from 1024–65535")
+        }
+        let homes = profiles.map { URL(fileURLWithPath: $0.home).standardizedFileURL.resolvingSymlinksInPath().path }
+        guard !homes.contains("/"), Set(homes).count == homes.count else {
+            throw EngineError("Each server must use its own data folder")
+        }
+        // Removing one profile moves its entire home. Nested homes would also
+        // move another server, even when their original path strings differ.
+        for (index, home) in homes.enumerated() {
+            guard !homes.enumerated().contains(where: { $0.offset != index && $0.element.hasPrefix(home + "/") }) else {
+                throw EngineError("Server data folders cannot contain another server's data folder")
+            }
+        }
     }
 }
 extension Engine {

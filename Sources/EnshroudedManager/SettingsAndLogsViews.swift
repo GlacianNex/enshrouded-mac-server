@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import EnshroudedCore
 
 struct SettingsView: View {
@@ -57,7 +58,7 @@ struct SettingsView: View {
             if let error { Text(error).font(.caption).foregroundStyle(.red) }
             HStack {
                 Text("Changes take effect on the next server start.").font(.caption).foregroundStyle(.secondary)
-                Spacer(); Button("Cancel") { dismiss() }
+                Spacer(); Button("Cancel") { dismiss() }.disabled(model.busy)
                 Button("Save Settings", action: save).disabled(!model.canEdit || !rulesLoaded).keyboardShortcut(.defaultAction)
             }
         }.padding(22).frame(width: 640, height: 680)
@@ -77,8 +78,11 @@ struct SettingsView: View {
             let changed = draft.preset == "Custom" ? ruleValues.filter { originalRules[$0.key] != $0.value } : [:]
             for rule in rules { if let value = changed[rule.key] { _ = try rule.parse(value) } }
             let settings = draft
-            model.operation("Save settings") { try $0.saveSettings(settings, worldRules: changed) }
-            dismiss()
+            error = nil
+            model.operation("Save settings", work: { try $0.saveSettings(settings, worldRules: changed) }, completion: { success in
+                if success { dismiss() }
+                else { error = model.error ?? "Settings could not be saved. Try again." }
+            })
         } catch { self.error = error.localizedDescription }
     }
     var presetHelp: String {
@@ -95,23 +99,158 @@ struct LogsView: View {
     @ObservedObject var model: Model
     @State private var selected = "Server"
     @State private var filter = ""
+    @State private var autoScroll = true
+    @State private var wrapText = true
+    @State private var currentServerLog = ""
+    @State private var loading = true
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack { Text("Server Logs").font(.title2.bold()); Spacer(); Button("Done") { dismiss() } }
             Picker("Log", selection: $selected) { Text("Server").tag("Server"); Text("Manager Activity").tag("Manager") }.pickerStyle(.segmented)
             TextField("Filter log lines", text: $filter)
-            ScrollView([.horizontal, .vertical]) {
-                Text(filtered.isEmpty ? "No matching log lines." : filtered).font(.system(size: 11, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(10)
-            }.background(.background.secondary, in: RoundedRectangle(cornerRadius: 8))
+            HStack(spacing: 16) {
+                Toggle("Auto-scroll", isOn: $autoScroll).toggleStyle(.checkbox)
+                    .help("Follow new log lines. Turn off to read earlier lines.")
+                Toggle("Wrap Text", isOn: $wrapText).toggleStyle(.checkbox)
+                    .help("Wrap long lines to fit the window. Copy keeps the original line breaks.")
+                Spacer()
+            }
+            LogTextPane(text: displayed, wrap: wrapText, follow: autoScroll)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             HStack {
-                Text("Latest 256 KB · refreshes every 5 seconds while idle").font(.caption).foregroundStyle(.secondary)
-                Spacer(); Button("Open Log Folder") { NSWorkspace.shared.open(model.engine.data.appendingPathComponent("logs")) }
+                Text(selected == "Server" ? "Latest 256 KB · refreshes every second" : "Recent manager activity")
+                    .font(.caption).foregroundStyle(.secondary)
+                Spacer(); Button("Open Log Folder") { NSWorkspace.shared.open(selected == "Server" ? model.engine.data.appendingPathComponent("logs") : model.engine.home) }
             }
         }.padding(20).frame(width: 820, height: 580)
+        .task {
+            let engine = model.engine
+            while !Task.isCancelled {
+                let text = await Task.detached(priority: .utility) { engine.logTail() }.value
+                guard !Task.isCancelled else { return }
+                if currentServerLog != text { currentServerLog = text }
+                loading = false
+                do { try await Task.sleep(for: .seconds(1)) }
+                catch { return }
+            }
+        }
     }
     var filtered: String {
-        let text = selected == "Server" ? model.serverLog : model.activity
-        return filter.isEmpty ? text : text.components(separatedBy: .newlines).filter { $0.localizedCaseInsensitiveContains(filter) }.joined(separator: "\n")
+        LogDisplay.readable(selected == "Server" ? currentServerLog : model.activity, filter: filter)
+    }
+    private var displayed: String {
+        if selected == "Server" && loading { return "Loading logs…" }
+        if !filtered.isEmpty { return filtered }
+        if !filter.isEmpty { return "No matching log lines." }
+        return selected == "Server" ? "No server log yet. Start the server to create one." : "No manager activity recorded yet."
+    }
+}
+
+private struct LogTextPane: NSViewRepresentable {
+    let text: String
+    let wrap: Bool
+    let follow: Bool
+    func makeNSView(context: Context) -> LogTextScrollView { LogTextScrollView() }
+    func updateNSView(_ view: LogTextScrollView, context: Context) {
+        view.update(text: text, wrap: wrap, follow: follow)
+    }
+}
+
+/// Native plain-text selection preserves original line breaks when copying wrapped text.
+private final class LogTextScrollView: NSScrollView {
+    private let logText = NSTextView(frame: .zero)
+    private var wrapping = true
+    private var following = false
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        hasVerticalScroller = true
+        borderType = .bezelBorder
+        logText.isEditable = false
+        logText.isSelectable = true
+        logText.isRichText = false
+        logText.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+        logText.textColor = .textColor
+        logText.backgroundColor = .textBackgroundColor
+        logText.textContainerInset = NSSize(width: 8, height: 8)
+        logText.minSize = .zero
+        logText.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        logText.isVerticallyResizable = true
+        documentView = logText
+        let gutter = LogLineRuler(scrollView: self, orientation: .verticalRuler)
+        gutter.clientView = logText
+        gutter.ruleThickness = 56
+        verticalRulerView = gutter
+        hasVerticalRuler = true
+        rulersVisible = true
+        contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(self, selector: #selector(scrolled), name: NSView.boundsDidChangeNotification, object: contentView)
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    deinit { NotificationCenter.default.removeObserver(self) }
+    @objc private func scrolled() { verticalRulerView?.needsDisplay = true }
+    override func tile() {
+        super.tile()
+        if wrapping {
+            logText.setFrameSize(NSSize(width: contentSize.width, height: logText.frame.height))
+            logText.textContainer?.containerSize = NSSize(width: contentSize.width, height: CGFloat.greatestFiniteMagnitude)
+        }
+        verticalRulerView?.needsDisplay = true
+    }
+    func update(text: String, wrap: Bool, follow: Bool) {
+        let changed = logText.string != text
+        let shouldFollow = follow && (changed || !following || wrapping != wrap)
+        let origin = contentView.bounds.origin
+        let selection = logText.selectedRange()
+        wrapping = wrap
+        following = follow
+        hasHorizontalScroller = !wrap
+        logText.isHorizontallyResizable = !wrap
+        logText.autoresizingMask = wrap ? [.width] : []
+        logText.textContainer?.widthTracksTextView = wrap
+        logText.textContainer?.containerSize = NSSize(width: wrap ? contentSize.width : CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        if changed {
+            logText.string = text
+            let count = (text as NSString).length
+            let start = min(selection.location, count)
+            logText.setSelectedRange(NSRange(location: start, length: min(selection.length, count - start)))
+        }
+        tile()
+        if let container = logText.textContainer { logText.layoutManager?.ensureLayout(for: container) }
+        logText.sizeToFit()
+        if shouldFollow && selection.length == 0 {
+            logText.scrollRangeToVisible(NSRange(location: (text as NSString).length, length: 0))
+        } else if changed {
+            contentView.scroll(to: origin)
+            reflectScrolledClipView(contentView)
+        }
+        verticalRulerView?.needsDisplay = true
+    }
+}
+
+/// Draw line numbers separately so Copy contains only the original log text.
+private final class LogLineRuler: NSRulerView {
+    override func drawHashMarksAndLabels(in rect: NSRect) {
+        NSColor.windowBackgroundColor.setFill()
+        bounds.fill()
+        guard let textView = clientView as? NSTextView, let layout = textView.layoutManager else { return }
+        let source = textView.string as NSString
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
+            .foregroundColor: NSColor.secondaryLabelColor
+        ]
+        var offset = 0, number = 1
+        while offset < source.length {
+            let glyph = layout.glyphIndexForCharacter(at: offset)
+            let fragment = layout.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            let point = convert(NSPoint(x: 0, y: fragment.minY + textView.textContainerOrigin.y), from: textView)
+            if point.y > bounds.maxY { break }
+            if point.y + fragment.height >= bounds.minY {
+                let label = String(number) as NSString
+                label.draw(at: NSPoint(x: ruleThickness - label.size(withAttributes: attributes).width - 8, y: point.y), withAttributes: attributes)
+            }
+            offset = NSMaxRange(source.lineRange(for: NSRange(location: offset, length: 0)))
+            number += 1
+        }
     }
 }

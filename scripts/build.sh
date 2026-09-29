@@ -7,6 +7,7 @@ version="${VERSION:-0.1.2}"
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'VERSION must use major.minor.patch' >&2; exit 1; }
 build_version="$(date -u +%y%m%d.%H%M.%S)"
 build_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+if [[ -n "${SIGNING_IDENTITY:-}" ]]; then bash scripts/apple-preflight.sh; fi
 bash scripts/prepare-tools.sh
 swift build -c release --arch arm64
 binary_dir=$(swift build -c release --arch arm64 --show-bin-path)

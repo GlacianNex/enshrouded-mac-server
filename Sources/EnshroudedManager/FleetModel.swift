@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import ServiceManagement
 import EnshroudedCore
 
 @MainActor final class FleetModel: ObservableObject {
@@ -7,26 +8,51 @@ import EnshroudedCore
     @Published var selectedID: String
     @Published var showNewServer = false
     @Published var error: String?
+    @Published var managerRelease: ManagerRelease?
+    @Published var checkingManagerRelease = false
+    private var managerTimer: Timer?
+    var managerUpdateAvailable: Bool { !selected.build.experimental && managerRelease?.isNewer(than: selected.build.version) == true }
     var statusMenu: StatusMenu?
     private var subscriptions: Set<AnyCancellable> = []
     let store: ProfileStore
     var selected: Model { models.first { $0.engine.home.path == selectedID } ?? models[0] }
     init() {
-        let first = Model()
-        let isolated = ProcessInfo.processInfo.environment["ESM_HOME"] != nil
-        let registry = isolated ? first.engine.home.appendingPathComponent("profiles.json") : FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Enshrouded Manager/profiles.json")
-        store = ProfileStore(registry: registry)
-        models = [first]; selectedID = first.engine.home.path
+        let env = ProcessInfo.processInfo.environment
+        let defaultHome = (env["ESM_HOME"] ?? UserDefaults.standard.string(forKey: "serverHome")).map { URL(fileURLWithPath: $0) }
+            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/EnshroudedServer")
+        let isolated = env["ESM_HOME"] != nil
+        let managementRoot = isolated ? defaultHome.deletingLastPathComponent().appendingPathComponent(defaultHome.lastPathComponent + "-manager")
+            : FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Enshrouded Manager")
+        store = ProfileStore(registry: managementRoot.appendingPathComponent("profiles.json"))
+        var registered: [ServerProfile] = []
+        var loadError: String?
         do {
-            var profiles = try store.load()
-            if profiles.isEmpty {
-                profiles = [.init(id: "primary", name: first.name, home: first.engine.home.path, port: Int(first.engine.hostPort))]
-                try store.save(profiles)
+            // Migrate isolated registries out of the server folder before using recovery.
+            let legacy = defaultHome.appendingPathComponent("profiles.json")
+            if isolated && !FileManager.default.fileExists(atPath: store.registry.path) && FileManager.default.fileExists(atPath: legacy.path) {
+                try store.save(ProfileStore(registry: legacy).load())
             }
-            for profile in profiles where profile.home != first.engine.home.path { models.append(Model(homeOverride: URL(fileURLWithPath: profile.home))) }
-        } catch { self.error = "Could not load server profiles: \(error.localizedDescription)" }
+            registered = try store.load()
+        } catch { loadError = "Could not load server profiles: \(error.localizedDescription)" }
+        if registered.isEmpty && loadError == nil {
+            let engine = Engine(home: defaultHome, resources: Bundle.main.resourceURL!)
+            registered = [.init(id: "primary", name: (try? engine.readSettings().name) ?? "Enshrouded Server", home: defaultHome.path, port: Int(engine.hostPort))]
+            do { try store.save(registered) } catch { loadError = error.localizedDescription }
+        }
+        // A malformed registry must not autostart an unrelated default server.
+        let initialModels = registered.isEmpty ? [Model(homeOverride: managementRoot.appendingPathComponent("unconfigured"), automaticStartup: false)]
+            : registered.map { Model(homeOverride: URL(fileURLWithPath: $0.home)) }
+        models = initialModels
+        selectedID = initialModels[0].engine.home.path
+        error = loadError
         observe()
         ApplicationLifetime.isBusy = { [weak self] in self?.models.contains { $0.busy } ?? false }
+        if !selected.build.experimental && !isolated {
+            checkManagerUpdates()
+            managerTimer = Timer.scheduledTimer(withTimeInterval: 6 * 3600, repeats: true) { [weak self] _ in
+                Task { @MainActor in self?.checkManagerUpdates() }
+            }
+        }
     }
     private func observe() {
         subscriptions.removeAll()
@@ -47,7 +73,9 @@ import EnshroudedCore
         var profiles = try store.load()
         guard (1024...65535).contains(port), !profiles.contains(where: { $0.port == port }) else { throw EngineError("Choose an unused UDP port from 1024–65535") }
         let id = String(UUID().uuidString.prefix(8)).lowercased()
-        let root = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/ESM/\(id)")
+        let root = ProcessInfo.processInfo.environment["ESM_HOME"] != nil
+            ? store.registry.deletingLastPathComponent().appendingPathComponent("servers/\(id)")
+            : FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/ESM/\(id)")
         let profile = ServerProfile(id: id, name: settings.name, home: root.path, port: port)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         try JSONEncoder().encode(profile).write(to: root.appendingPathComponent("profile.json"), options: .atomic)
@@ -107,11 +135,12 @@ extension FleetModel {
         let engines = models.map(\.engine)
         for model in models { model.busy = true; model.operationTitle = "Updating manager…" }
         Task {
+            while models.contains(where: { $0.polling || $0.checkingRelease }) { try? await Task.sleep(for: .milliseconds(100)) }
             do {
                 let backup = try await Task.detached {
                     try ManagerInstallation.replaceManagingServers(source, destination: destination, engines: engines)
                 }.value
-                selected.activity += "Previous manager retained at \(backup.path)\n"
+                selected.recordActivity("Previous manager retained at \(backup.path)\n")
                 let config = NSWorkspace.OpenConfiguration(); config.createsNewApplicationInstance = true
                 config.allowsRunningApplicationSubstitution = false
                 config.environment = ["ESM_RELAUNCH_FROM_PID": String(ProcessInfo.processInfo.processIdentifier)]
@@ -162,7 +191,7 @@ extension FleetModel {
                 for model in targets {
                     let engine = model.engine
                     try await Task.detached {
-                        try engine.perform("update") { chunk in Task { @MainActor in model.activity = String((model.activity + chunk).suffix(40_000)) } }
+                        try engine.perform("update") { chunk in Task { @MainActor in model.recordActivity(chunk) } }
                     }.value
                 }
             } catch { self.error = error.localizedDescription }
@@ -181,26 +210,22 @@ extension FleetModel {
         Task {
             do {
                 while model.polling { try? await Task.sleep(for: .milliseconds(100)) }
-                let remaining = try await Task.detached { () -> [ServerProfile] in
-                    try engine.perform("shutdown", output: {_ in})
-                    var profiles = try store.load()
-                    guard let profile = profiles.first(where: { $0.home == engine.home.path }) else { throw EngineError("Server profile is missing") }
-                    let recovery = store.registry.deletingLastPathComponent().appendingPathComponent("deleted-servers/\(UUID().uuidString)")
-                    try FileManager.default.createDirectory(at: recovery, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-                    try JSONEncoder().encode(profile).write(to: recovery.appendingPathComponent("profile.json"))
-                    try FileManager.default.moveItem(at: engine.home, to: recovery.appendingPathComponent("data"))
-                    profiles.removeAll { $0.home == profile.home }
-                    do { try store.save(profiles) }
-                    catch { try FileManager.default.moveItem(at: recovery.appendingPathComponent("data"), to: engine.home); throw error }
-                    return profiles
-                }.value
+                await model.flushActivity()
+                let remaining = try await Task.detached { try engine.moveToRecovery(store: store) }.value
+                model.retire()
                 models.removeAll { $0 === model }
                 if models.isEmpty {
                     let fresh = Model(homeOverride: engine.home)
                     models = [fresh]
                     try store.save([ServerProfile(id: "primary", name: fresh.name, home: fresh.engine.home.path, port: Int(fresh.engine.hostPort))])
                 }
-                if let first = remaining.first { UserDefaults.standard.set(first.home, forKey: "serverHome") }
+                if ProcessInfo.processInfo.environment["ESM_HOME"] == nil {
+                    if let first = remaining.first { UserDefaults.standard.set(first.home, forKey: "serverHome") }
+                    if !models.contains(where: { $0.automation.startAtLogin }) && SMAppService.mainApp.status == .enabled {
+                        do { try await SMAppService.mainApp.unregister() }
+                        catch { self.error = "Server removed, but login startup could not be disabled: \(error.localizedDescription)" }
+                    }
+                }
                 selectedID = models[0].engine.home.path; observe()
             } catch { model.error = error.localizedDescription; model.busy = false; model.refresh() }
         }
@@ -220,11 +245,41 @@ extension FleetModel {
             do { try FileManager.default.moveItem(at: folder.appendingPathComponent("data"), to: home) }
             catch { try store.save(profiles); throw error }
             let recovered = Engine(home: home, resources: Bundle.main.resourceURL!)
-            var automation = recovered.loadAutomation(); automation.startAtLogin = false; automation.nextRestart = nil
+            var automation = recovered.loadAutomation(); automation.startAtLogin = false; automation.nextRestart = nil; automation.waitingRestart = nil
             try recovered.saveAutomation(automation)
             try? FileManager.default.removeItem(at: home.appendingPathComponent("resume-after-manager-update"))
             models.removeAll { $0.engine.home.path == profile.home }
             models.append(Model(homeOverride: home)); selectedID = home.path; observe()
         } catch { self.error = error.localizedDescription }
+    }
+}
+
+extension FleetModel {
+    func checkManagerUpdates() {
+        guard !selected.build.experimental, !checkingManagerRelease else { return }
+        checkingManagerRelease = true
+        Task {
+            defer { checkingManagerRelease = false }
+            do { managerRelease = try await ManagerUpdater.latest() }
+            catch { /* Background discovery retries on the next scheduled check. */ }
+        }
+    }
+    func updateManager() {
+        guard managerUpdateAvailable, let release = managerRelease, !models.contains(where: \.busy) else { return }
+        let prompt = NSAlert()
+        prompt.messageText = "Update Enshrouded Server Manager?"
+        prompt.informativeText = "Updating the manager will stop all running servers. They will start back up once the update finishes."
+        prompt.addButton(withTitle: "Stop, Update & Relaunch"); prompt.addButton(withTitle: "Cancel")
+        guard prompt.runModal() == .alertFirstButtonReturn else { return }
+        for model in models { model.busy = true; model.operationTitle = "Downloading manager…" }
+        Task {
+            do {
+                let app = try await ManagerUpdater.download(release)
+                installManager(app, destination: URL(fileURLWithPath: "/Applications/Enshrouded Server Manager.app"))
+            } catch {
+                self.error = error.localizedDescription
+                for model in models { model.busy = false; model.refresh() }
+            }
+        }
     }
 }

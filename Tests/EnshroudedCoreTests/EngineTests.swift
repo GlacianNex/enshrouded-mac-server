@@ -2,13 +2,25 @@ import XCTest
 @testable import EnshroudedCore
 
 final class EngineTests: XCTestCase {
+    func testRuntimeHelpersRefreshAfterManagerUpgradeWithoutChangingWorld() throws {
+        let engine = try ManagerTests().fixture()
+        defer { try? FileManager.default.removeItem(at: engine.home) }
+        try engine.syncRuntimeHelpers()
+        let guest = engine.resources.appendingPathComponent("Runtime/guest.sh")
+        try Data("new helper".utf8).write(to: guest)
+        try engine.syncRuntimeHelpers()
+        XCTAssertEqual(try String(contentsOf: engine.home.appendingPathComponent("runtime/guest.sh")), "new helper")
+        XCTAssertEqual(try String(contentsOf: engine.world.appendingPathComponent("3ad85aea")), "original progress")
+    }
+
     func testStartUsesInternalReadinessWithoutRequiringAHostPortListener() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let engine = Engine(home: root, resources: root)
-        for path in ["Lima/bin", "lima/engine", "data/server"] {
+        for path in ["Lima/bin", "lima/engine", "data/server", "Runtime"] {
             try FileManager.default.createDirectory(at: root.appendingPathComponent(path), withIntermediateDirectories: true)
         }
+        for name in ["guest.sh", "stop-server.py"] { try Data("fixture".utf8).write(to: root.appendingPathComponent("Runtime/" + name)) }
         for path in ["lima/engine/lima.yaml", "internet-forward-v1", "data/server/enshrouded_server.exe"] {
             try Data().write(to: root.appendingPathComponent(path))
         }

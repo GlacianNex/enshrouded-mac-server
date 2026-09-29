@@ -63,7 +63,7 @@ def query_response():
 extension Engine {
     public func queryServer() throws -> ServerQuery {
         let script = ServerQuery.guestQueryPython + "\nimport base64\nprint(base64.b64encode(query_response()).decode())"
-        let reply = try command(["shell", "engine", "python3", "-c", script], output: {_ in})
+        let reply = try command(["shell", "engine", "python3", "-c", script], timeout: 10, output: {_ in})
         guard let data = Data(base64Encoded: reply.trimmingCharacters(in: .whitespacesAndNewlines)) else { throw EngineError("Player count unavailable") }
         return try ServerQuery.parse(data)
     }

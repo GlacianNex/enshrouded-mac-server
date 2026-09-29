@@ -26,22 +26,28 @@ struct SetupView: View {
             Text("Stop the source game or server before importing. World saves are copied; characters stay with their players.").font(.caption).foregroundStyle(.secondary)
             Toggle("Start the server when setup finishes", isOn: $startWhenReady)
             Text("Internet hosting uses UDP \(model.engine.hostPort). Your router must forward that port to this Mac.").font(.caption)
+            if model.busy { HStack { ProgressView().controlSize(.small); Text(model.operationTitle) } }
             if let error { Text(error).foregroundStyle(.orange) }
-            HStack { Button("Cancel") { dismiss() }; Spacer(); Button("Install & Set Up") {
-                do { _ = try draft.applying(to: [:]); model.setup(draft, world: importedWorld, start: startWhenReady); dismiss() }
+            HStack { Button("Cancel") { dismiss() }.disabled(model.busy); Spacer(); Button("Install & Set Up") {
+                do {
+                    _ = try draft.applying(to: [:]); error = nil
+                    model.setup(draft, world: importedWorld, start: startWhenReady) { success in
+                        if success { dismiss() } else { error = model.error ?? "Setup could not finish. Try again." }
+                    }
+                }
                 catch { self.error = error.localizedDescription }
             }.disabled(model.busy) }
         }.padding(24).frame(width: 610)
     }
 }
 extension Model {
-    func setup(_ settings: ServerSettings, world: URL?, start: Bool) {
-        operation("Setting up server…") { engine in
-            try engine.perform("install") { chunk in Task { @MainActor in self.activity = String((self.activity + chunk).suffix(40_000)) } }
+    func setup(_ settings: ServerSettings, world: URL?, start: Bool, completion: ((Bool) -> Void)? = nil) {
+        operation("Setting up server…", work: { engine in
+            try engine.perform("install") { chunk in Task { @MainActor in self.recordActivity(chunk) } }
             try engine.saveSettings(settings)
             if let world { try engine.importWorld(primaryFile: world) }
-            if start { try engine.perform("start") { chunk in Task { @MainActor in self.activity += chunk } } }
-        }
+            if start { try engine.perform("start") { chunk in Task { @MainActor in self.recordActivity(chunk) } } }
+        }, completion: completion)
     }
     func chooseWorldImport() {
         guard canEdit else { return }

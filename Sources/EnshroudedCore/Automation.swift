@@ -11,6 +11,8 @@ public struct HostingAutomation: Codable, Equatable {
     public var everyDays: Int? = nil
     public var anchorDate: Date? = nil
     public var nextRestart: Date?
+    // Only an occurrence observed while waiting for players may run late.
+    public var waitingRestart: Date?
     public var lastAutomaticManifest: String?
     public init() {}
     public func next(after date: Date, calendar: Calendar = .current) -> Date? {
@@ -18,15 +20,48 @@ public struct HostingAutomation: Codable, Equatable {
         if let days = everyDays, days > 1 {
             let anchor = calendar.startOfDay(for: anchorDate ?? date)
             let today = calendar.startOfDay(for: date)
-            let elapsed = max(0, calendar.dateComponents([.day], from: anchor, to: today).day ?? 0)
-            let remainder = elapsed % days
-            let advance = remainder == 0 ? 0 : days - remainder
-            guard let targetDay = calendar.date(byAdding: .day, value: advance, to: today), let candidate = calendar.date(bySettingHour: hour, minute: minute, second: 0, of: targetDay) else { return nil }
-            return candidate > date ? candidate : calendar.date(byAdding: .day, value: days, to: candidate)
+            let elapsed = calendar.dateComponents([.day], from: anchor, to: today).day ?? 0
+            let advance = elapsed <= 0 ? 0 : elapsed + (days - elapsed % days) % days
+            guard let targetDay = calendar.date(byAdding: .day, value: advance, to: anchor) else { return nil }
+            func occurrence(on day: Date) -> Date? {
+                calendar.date(bySettingHour: hour, minute: minute, second: 0, of: day,
+                              matchingPolicy: .nextTime, repeatedTimePolicy: .first, direction: .forward)
+            }
+            guard let candidate = occurrence(on: targetDay) else { return nil }
+            if candidate > date { return candidate }
+            // Rebuild the requested local time after a DST gap; adding days to
+            // its adjusted time would incorrectly shift future occurrences.
+            return calendar.date(byAdding: .day, value: days, to: targetDay).flatMap { occurrence(on: $0) }
         }
         return weekdays.filter { (1...7).contains($0) }.compactMap { day in
             calendar.nextDate(after: date, matching: DateComponents(hour: hour, minute: minute, weekday: day), matchingPolicy: .nextTime, repeatedTimePolicy: .first)
         }.min()
+    }
+
+    /// Settings unrelated to restarts must not cancel a pending occurrence.
+    public func reconcilingRestart(with previous: HostingAutomation, now: Date = Date(), calendar: Calendar = .current) -> HostingAutomation {
+        var result = self
+        let changed = restartEnabled != previous.restartEnabled || hour != previous.hour || minute != previous.minute ||
+            Set(weekdays) != Set(previous.weekdays) || everyDays != previous.everyDays || anchorDate != previous.anchorDate
+        if changed {
+            result.nextRestart = next(after: now, calendar: calendar)
+            result.waitingRestart = nil
+        } else {
+            result.nextRestart = previous.nextRestart
+            result.waitingRestart = previous.waitingRestart
+        }
+        return result
+    }
+}
+
+public enum ScheduledRestartPolicy {
+    public enum Decision: Equatable { case none, waiting, skip, run }
+    /// Matches Valheim's missed-occurrence policy without unsupported game warnings.
+    public static func decide(automation: HostingAutomation, now: Date, running: Bool, players: Int?) -> Decision {
+        guard automation.restartEnabled, let due = automation.nextRestart, due <= now else { return .none }
+        guard running else { return .skip }
+        if now.timeIntervalSince(due) > 60 && automation.waitingRestart != due { return .skip }
+        return players == 0 ? .run : .waiting
     }
 }
 extension Engine {
