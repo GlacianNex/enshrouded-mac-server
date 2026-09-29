@@ -1,6 +1,6 @@
 # 0.1.2 — Installation and Reliability Improvements
 
-Candidate · Changes since 0.1.1
+2026-09-29 · Changes since 0.1.1
 
 ## TL;DR
 
@@ -28,5 +28,7 @@ Updating the manager will stop all running servers. They will start back up once
 ## Verification
 
 93 automated tests pass. Isolated native checks verified settings failure/retry, log filtering, and separate activity logs. A public GitHub release was downloaded and validated through the new updater without installing it. Installation quarantine behavior was verified with a signed app in an isolated destination.
+
+The release is Developer ID signed, Apple-notarized, and stapled. Both ordinary ZIP and metadata-aware extraction pass signature and Gatekeeper checks. GitHub CI passed. Verification on another Mac is pending.
 
 See the [audit checklist](VALHEIM-PARITY.md) for coverage and remaining platform-testing limits.

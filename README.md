@@ -2,7 +2,7 @@
 
 Host Enshrouded worlds for your friends from your Mac. This native macOS menu bar app downloads the dedicated server, creates or imports worlds, and manages multiple servers without Terminal setup.
 
-**[Download for Mac](https://github.com/GlacianNex/enshrouded-mac-server/releases/latest)** · [What's New in 0.1.1](docs/RELEASE-NOTES-0.1.1.md) · [Setup and Recovery](docs/SETUP.md)
+**[Download for Mac](https://github.com/GlacianNex/enshrouded-mac-server/releases/latest)** · [What's New in 0.1.2](docs/RELEASE-NOTES-0.1.2.md) · [Setup and Recovery](docs/SETUP.md)
 
 Requires **Apple Silicon and macOS 14 Sonoma or later**, internet access for setup, and **30 GB of free space**. Each server environment allocates 8 GB of RAM and four CPU cores; a Mac with at least 16 GB of RAM leaves room for macOS. The release is Developer ID signed and Apple-notarized.
 
@@ -47,7 +47,7 @@ The manager prevents idle sleep while hosting by default. Quitting it leaves run
 
 **Official Enshrouded server updates** are checked every ten minutes while the server environment is on. Manual checks can temporarily start a stopped environment. Updates stage and validate files before replacing them, preserve settings and worlds, and retain the previous installation. Running servers must be confirmed empty. Automatic server updates are optional.
 
-**Manager app updates** are separate. Download a release, open the app, and choose **Stop, Update & Relaunch**. This saves and stops all running servers, installs the manager, and restarts those servers afterward—even if players are connected. Stopped servers stay stopped. In the 0.1.2 candidate, the version row offers verified stable manager downloads when an update is available; installation still requires confirmation.
+**Manager app updates** are separate. Download a release, open the app, and choose **Stop, Update & Relaunch**. This saves and stops all running servers, installs the manager, and restarts those servers afterward—even if players are connected. Stopped servers stay stopped. Starting with 0.1.2, the version row offers verified stable manager downloads when an update is available; installation still requires confirmation.
 
 ## Data and Runtime
 
@@ -84,4 +84,4 @@ The manager source is MIT licensed. Third-party components retain their licenses
 
 This is an unofficial community tool, not affiliated with Keen Games, Valve, or Apple.
 
-The [Valheim reliability audit](docs/VALHEIM-PARITY.md) records the fixes transferred into the 0.1.2 candidate and their regression coverage.
+The [Valheim reliability audit](docs/VALHEIM-PARITY.md) records the fixes transferred into 0.1.2 and their regression coverage.

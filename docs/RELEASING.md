@@ -8,7 +8,7 @@ Update the version default in `scripts/build.sh`, changelog, and release notes, 
 
 ```sh
 swift test
-VERSION=0.1.1 SIGNING_IDENTITY='Developer ID Application: YOUR NAME (TEAMID)' bash scripts/build.sh
+VERSION=0.1.2 SIGNING_IDENTITY='Developer ID Application: YOUR NAME (TEAMID)' bash scripts/build.sh
 NOTARY_PROFILE=ESM_NOTARY bash scripts/notarize.sh
 ```
 
@@ -50,7 +50,7 @@ Follow the Valheim dedicated-server manager's published notes: lead with what ch
 1. Write versioned notes in `docs/RELEASE-NOTES-<version>.md`. Include a descriptive title, release date and previous version, TL;DR, What Changed (or Features and Bug Fixes), Install or Update, and Verification. Omit empty sections. State actual requirements, server restart effects, data preservation, and meaningful limits.
 2. Add a dated changelog entry linking to those notes. Update the README's What's New label and link in the same commit. Review setup and verification documentation for changed behavior.
 3. Keep general download links on `https://github.com/GlacianNex/enshrouded-mac-server/releases/latest`. Historical notes remain versioned; mark a broken release superseded and link to the corrected download.
-4. Use the checked-in release notes for the GitHub body. Convert relative documentation links to absolute GitHub links. The workflow's generic draft text is only a placeholder and must be replaced before publication.
+4. Use the checked-in release notes for the GitHub body. Convert relative documentation links to absolute GitHub links. The workflow renders the checked-in notes and rejects broken local documentation links.
 5. Preserve stable asset names: `Enshrouded-Server-Manager-for-Mac.zip` and `SHA256SUMS.txt`. The ZIP contains the app only. A local handoff folder contains only the app, without a separate README.
 
 ## Publication Checklist
@@ -67,6 +67,6 @@ Follow the Valheim dedicated-server manager's published notes: lead with what ch
 
 Valheim separates stable releases, Experimental builds, and official game-server updates. Enshrouded follows that separation: Experimental builds are explicitly labeled, unsigned CI artifacts remain development builds, and official game-server versions are independent of the manager version.
 
-Valheim also checks GitHub for manager updates and validates the downloaded size, digest, version, signing identity, and Gatekeeper acceptance before installation. Enshrouded currently uses manual manager downloads; automatic manager-update discovery remains a separate implementation gap. Do not describe it as present in release notes.
+Valheim also checks GitHub for manager updates and validates the downloaded size, digest, version, signing identity, and Gatekeeper acceptance before installation. Enshrouded 0.1.2 includes stable manager-update discovery and verified downloads, with explicit confirmation before installation.
 
 The packaging implementation must stay Enshrouded-specific: Apple Silicon only, bundled Lima tools with internal symbolic links, and runtime/server downloads during setup. Retain the metadata-sidecar exclusion and both extraction checks added in 0.1.1.
