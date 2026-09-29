@@ -10,6 +10,13 @@ import EnshroudedCore
     @Published var error: String?
     @Published var managerRelease: ManagerRelease?
     @Published var checkingManagerRelease = false
+    @Published var managerCheckDate: Date?
+    @Published var managerCheckFailed = false
+    var managerUpdateStatus: String {
+        if managerUpdateAvailable { return "Update Available" }
+        if checkingManagerRelease || managerCheckDate == nil { return "Checking…" }
+        return managerCheckFailed ? "Check Unavailable" : "Up to Date"
+    }
     private var managerTimer: Timer?
     var managerUpdateAvailable: Bool { !selected.build.experimental && managerRelease?.isNewer(than: selected.build.version) == true }
     var statusMenu: StatusMenu?
@@ -49,7 +56,7 @@ import EnshroudedCore
         ApplicationLifetime.isBusy = { [weak self] in self?.models.contains { $0.busy } ?? false }
         if !selected.build.experimental && !isolated {
             checkManagerUpdates()
-            managerTimer = Timer.scheduledTimer(withTimeInterval: 6 * 3600, repeats: true) { [weak self] _ in
+            managerTimer = Timer.scheduledTimer(withTimeInterval: 5 * 60, repeats: true) { [weak self] _ in
                 Task { @MainActor in self?.checkManagerUpdates() }
             }
         }
@@ -258,10 +265,11 @@ extension FleetModel {
     func checkManagerUpdates() {
         guard !selected.build.experimental, !checkingManagerRelease else { return }
         checkingManagerRelease = true
+        managerCheckDate = Date()
         Task {
             defer { checkingManagerRelease = false }
-            do { managerRelease = try await ManagerUpdater.latest() }
-            catch { /* Background discovery retries on the next scheduled check. */ }
+            do { managerRelease = try await ManagerUpdater.latest(); managerCheckFailed = false }
+            catch { managerCheckFailed = true }
         }
     }
     func updateManager() {

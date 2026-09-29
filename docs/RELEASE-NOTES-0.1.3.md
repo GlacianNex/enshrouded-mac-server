@@ -4,6 +4,8 @@ Candidate · Changes since 0.1.2
 
 ## What Changed
 
+- Match Valheim’s manager-update menu with an update badge, version/check status, and a manual manager-update check. Checks run at launch and every five minutes; this is a menu indication, not a macOS notification banner.
+
 - Setup lists every component and its source before downloading.
 - Explains that 30 GB is free disk space for installation and updates, not the download size.
 - Shows setup steps, elapsed time, reported download bytes, and current-step progress. Download totals remain unknown until the source provides them. Valve reports file progress and final downloaded bytes; Ubuntu reports completed package batches.

@@ -47,9 +47,23 @@ import EnshroudedCore
     }
     private func rebuild() {
         menu.removeAllItems(); actions.removeAll()
-        if fleet.managerUpdateAvailable {
-            add("Enshrouded Manager · Update Available", to: menu, enabled: !fleet.models.contains(where: \.busy)) { self.fleet.updateManager() }
-        } else { add("Enshrouded Manager · \(fleet.selected.build.label)", to: menu) }
+        let experimental = fleet.selected.build.experimental
+        let available = fleet.managerUpdateAvailable
+        let managerTitle = experimental ? "Enshrouded Manager · Experimental"
+            : "Enshrouded Manager · \(fleet.selected.build.version) · \(fleet.managerUpdateStatus)"
+        add(managerTitle, to: menu, enabled: available && !fleet.models.contains(where: \.busy) && !fleet.checkingManagerRelease) { self.fleet.updateManager() }
+        if available {
+            menu.items.last?.image = NSImage(systemSymbolName: "arrow.down.circle.fill", accessibilityDescription: "Manager update available")
+        }
+        menu.items.last?.toolTip = experimental
+            ? "Public manager updates are disabled for experimental builds."
+            : available
+                ? "Updating the manager will stop all running servers. They will start back up once the update finishes."
+                : "Checks for manager updates at launch and every five minutes while the manager is open."
+        if !experimental {
+            add(fleet.checkingManagerRelease ? "Checking for Manager Updates…" : "Check for Manager Updates", to: menu,
+                enabled: !fleet.checkingManagerRelease && !fleet.models.contains(where: \.busy)) { self.fleet.checkManagerUpdates() }
+        }
         menu.addItem(.separator())
         let busy = fleet.models.contains { $0.busy }
         if fleet.models.contains(where: { $0.release?.updateAvailable == true }) {
