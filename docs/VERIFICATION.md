@@ -2,6 +2,8 @@
 
 ## Candidate 0.1.10
 
+Manual-install artifact: `dist/Unified-Setup-0.1.10-260930.1508.28/Enshrouded Server Manager.app`. Developer ID signing, Apple notarization, stapling, strict signature verification, Gatekeeper, pre-distribution checks, and both ZIP extraction checks passed. No public release was created. [GitHub CI](https://github.com/GlacianNex/enshrouded-mac-server/actions/runs/36734486106) passed for source commit `e196617`.
+
 - New Server now collects identity, UDP port, world selection and startup preference once. Create & Set Up creates one profile and immediately starts setup, with progress and retry in the same window.
 - Native AppKit fields replace SwiftUI focus-state fields. Forty rapid field-editor switches and text replacements complete in under one second in the regression test; active text and selection survive a model refresh.
 - Isolated native UI checks passed for rapid clicks across all four inputs, name typing, Tab navigation, invalid-form validation without losing the draft, opening/cancelling the world picker, download-detail expansion, scrolling and cancellation.
