@@ -34,6 +34,7 @@ import EnshroudedCore
     @Published var showRestart = false
     @Published var operationTitle = ""
     @Published var release: ServerRelease?
+    @Published var releaseCheckQueued = false
     @Published var checkingRelease = false
     @Published var releaseCheckStarted: Date?
     @Published var releaseCheckStage = "Contacting Valve"
@@ -86,10 +87,13 @@ import EnshroudedCore
     var stopped: Bool { ["INSTALLED", "VM_STOPPED"].contains(state) }
     var canEdit: Bool { stopped && !busy }
     var endpoint: String? { publicAddress.map { "\($0):\(engine.hostPort)" } }
+    var installationPending: Bool { state == "NOT_INSTALLED" || setupProgress.map { !$0.finished } == true }
+    var menuTitle: String { name + " — " + label + (peerSummary.isEmpty ? "" : " · " + peerSummary) }
     var label: String {
+        if installationPending { return "Installation Pending" }
         if busy { return operationTitle }
         switch state {
-        case "NOT_INSTALLED": return "Ready to set up"
+        case "NOT_INSTALLED": return "Installation Pending"
         case "INSTALLED", "VM_STOPPED": return "Stopped"
         case "RUNNING": return "Running"
         case "RECOVERING": return "Recovering after a server crash…"
@@ -97,9 +101,11 @@ import EnshroudedCore
         }
     }
     var peerSummary: String {
+        if installationPending { return "" }
         if stopped { return "0 players" }
         if state == "RUNNING", let playerCount { return "\(playerCount) player\(playerCount == 1 ? "" : "s")" }
-        guard state == "RUNNING", let lastPeers, Date().timeIntervalSince(lastPeers) < 90 else { return "Players: checking…" }
+        guard state == "RUNNING" else { return "" }
+        guard let lastPeers, Date().timeIntervalSince(lastPeers) < 90 else { return "Players: checking…" }
         return "\(snapshot.peers.count) reported connection\(snapshot.peers.count == 1 ? "" : "s")"
     }
     var currentUpdateRate: Double? {
@@ -277,8 +283,17 @@ extension Model {
         let seconds = Int(Date().timeIntervalSince(releaseCheckStarted ?? Date()))
         return "\(releaseCheckStage)… \(seconds)s"
     }
+    var canRequestReleaseCheck: Bool {
+        ["INSTALLED", "RUNNING", "VM_STOPPED"].contains(state) &&
+            (!busy || ["start", "stop", "restart"].contains(activeAction ?? ""))
+    }
     func checkUpdates(allowBoot: Bool = true) {
-        guard !busy, !checkingRelease, ["INSTALLED", "RUNNING", "VM_STOPPED"].contains(state), allowBoot || state != "VM_STOPPED" else { return }
+        if busy {
+            if allowBoot && canRequestReleaseCheck { releaseCheckQueued = true }
+            return
+        }
+        guard !checkingRelease, ["INSTALLED", "RUNNING", "VM_STOPPED"].contains(state), allowBoot || state != "VM_STOPPED" else { return }
+        releaseCheckQueued = false
         checkingRelease = true; releaseCheckStarted = Date(); releaseCheckStage = "Contacting Valve"; releaseError = nil; nextReleaseCheck = Date().addingTimeInterval(600)
         let engine = engine
         Task {
@@ -308,7 +323,10 @@ extension Model {
                 return
             }
         }
-        if Date() >= nextReleaseCheck { checkUpdates(allowBoot: false) }
+        if releaseCheckQueued {
+            releaseCheckQueued = false
+            checkUpdates()
+        } else if Date() >= nextReleaseCheck { checkUpdates(allowBoot: false) }
         if stopped, let due = automation.nextRestart, Date() >= due {
             var updated = automation; updated.nextRestart = updated.next(after: Date()); updated.waitingRestart = nil
             do { try engine.saveAutomation(updated); automation = updated }

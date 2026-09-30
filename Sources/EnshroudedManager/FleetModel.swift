@@ -78,8 +78,9 @@ import EnshroudedCore
         return models.filter { homes.contains($0.engine.home.path) }
     }
     var menuValue: String {
-        if let busy = models.first(where: \.busy) { return busy.operationTitle }
+        if let busy = models.first(where: \.busy) { return busy.installationPending ? "Installation Pending" : busy.operationTitle }
         let running = models.filter { $0.state == "RUNNING" }
+        if running.isEmpty && models.contains(where: \.installationPending) { return "Installation Pending" }
         if running.isEmpty { return models.allSatisfy { $0.stopped || $0.state == "NOT_INSTALLED" } ? "0" : "…" }
         guard running.allSatisfy({ $0.playerCount != nil }) else { return "…" }
         return String(running.compactMap(\.playerCount).reduce(0, +))
@@ -91,7 +92,7 @@ import EnshroudedCore
             managerAtLogin = enabled
         } catch { self.error = "Could not change manager login startup: " + error.localizedDescription }
     }
-    var canChangeProfiles: Bool { !models.contains { $0.busy && $0.activeAction != "stop" } }
+    var canChangeProfiles: Bool { !models.contains { $0.busy && !["start", "stop", "restart"].contains($0.activeAction ?? "") } }
     func createAndSetUp(settings: ServerSettings, port: Int, world: URL?, start: Bool) throws -> Model {
         let model = try create(settings: settings, port: port)
         model.setup(settings, world: world, start: start)
@@ -113,11 +114,11 @@ import EnshroudedCore
         try JSONEncoder().encode(profile).write(to: root.appendingPathComponent("profile.json"), options: .atomic)
         let initial = try settings.applying(to: [:])
         try JSONSerialization.data(withJSONObject: initial).write(to: root.appendingPathComponent("initial-settings.json"), options: .atomic)
-        if retained != nil { try Data().write(to: root.appendingPathComponent("needs-setup")) }
+        try Data().write(to: root.appendingPathComponent("needs-setup"))
         profiles.append(profile); try store.save(profiles)
         for placeholder in models where !profiles.contains(where: { $0.home == placeholder.engine.home.path }) { placeholder.retire() }
         models.removeAll { model in !profiles.contains { $0.home == model.engine.home.path } }
-        let model = Model(homeOverride: root, sharedDownloads: sharedDownloads); models.append(model); selectedID = root.path; observe()
+        let model = Model(homeOverride: root, sharedDownloads: sharedDownloads); model.state = "NOT_INSTALLED"; models.append(model); selectedID = root.path; observe()
         return model
     }
 }
@@ -149,6 +150,7 @@ struct NewServerView: View {
     @State private var startWhenReady = true
     @State private var error: String?
     @State private var created: Model?
+    @State private var downloadsExpanded = false
     var close: () -> Void
     var body: some View {
         ScrollView {
@@ -162,7 +164,7 @@ struct NewServerView: View {
                     SetupTextField(title: "UDP port", text: $port).frame(height: 26)
                     Text("Forward this UDP port to this Mac for Internet play. Each server needs its own port.").font(.caption).foregroundStyle(.secondary)
                     SetupWorldOptions(importedWorld: $importedWorld, startWhenReady: $startWhenReady)
-                    SetupDownloadInfo()
+                    SetupDownloadInfo(expanded: $downloadsExpanded)
                     if let error { Text(error).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true) }
                     HStack {
                         Button("Cancel") { close() }.keyboardShortcut(.cancelAction)
@@ -177,7 +179,10 @@ struct NewServerView: View {
                     }
                 }
             }.padding(24)
-        }.frame(minWidth: 550, minHeight: 700)
+                .background(GeometryReader { geometry in
+                    ContentFittingWindow(contentHeight: geometry.size.height)
+                })
+        }.frame(minWidth: 550)
         .onAppear {
             let usedPorts = Set(fleet.configuredModels.map { Int($0.engine.hostPort) })
             port = String((15637...65535).first { !usedPorts.contains($0) } ?? 15637)
@@ -196,7 +201,9 @@ private struct NewServerInstallationView: View {
             Text(settings.name).font(.title2.bold())
             if let progress = model.setupProgress { SetupProgressView(progress: progress, startsServer: start) }
             if let error = model.error { Text(error).foregroundStyle(.orange).textSelection(.enabled) }
-            Text("You can close this window. Setup continues in the menu bar.").font(.caption).foregroundStyle(.secondary)
+            if model.busy {
+                Text("You can close this window. Setup continues in the menu bar.").font(.caption).foregroundStyle(.secondary)
+            }
             HStack {
                 Button("Open Logs") { LogsWindowController.show(model: model) }
                 Spacer()

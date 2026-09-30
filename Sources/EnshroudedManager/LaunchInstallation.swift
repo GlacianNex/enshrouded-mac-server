@@ -89,7 +89,7 @@ import EnshroudedCore
                 }
                 DispatchQueue.main.async { result = outcome }
             }
-            while result == nil { RunLoop.current.run(until: Date().addingTimeInterval(0.1)) }
+            InstallerEventLoop.wait { result != nil }
             let previous = try result!.get()
             progress.advance(.opening)
             try reopen(destination)
@@ -123,7 +123,21 @@ import EnshroudedCore
         NSWorkspace.shared.openApplication(at: destination, configuration: configuration) { _, error in
             DispatchQueue.main.async { failure = error; completed = true }
         }
-        while !completed { RunLoop.current.run(until: Date().addingTimeInterval(0.1)) }
+        InstallerEventLoop.wait { completed }
         if let failure { throw failure }
+    }
+}
+
+/// The downloaded-app installer runs before NSApplication.run().
+@MainActor enum InstallerEventLoop {
+    static func wait(until completed: () -> Bool) {
+        while !completed() {
+            // A Foundation run loop services timers and queues, but not AppKit
+            // input. Dispatch events here because the normal app loop has not started.
+            if let event = NSApp.nextEvent(matching: .any, until: Date().addingTimeInterval(0.05), inMode: .default, dequeue: true) {
+                NSApp.sendEvent(event)
+            }
+            NSApp.updateWindows()
+        }
     }
 }

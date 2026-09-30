@@ -10,6 +10,7 @@ final class SetupDownload: NSObject, URLSessionDownloadDelegate, @unchecked Send
     private var lastReport = Date.distantPast
     private init(destination: URL, output: @escaping (String) -> Void) { self.destination = destination; self.output = output }
     static func fetch(_ url: URL, destination: URL, sha256: String, output: @escaping (String) -> Void) throws {
+        guard url.scheme?.lowercased() == "https" else { throw EngineError("The environment download requires a secure HTTPS connection.") }
         if FileManager.default.fileExists(atPath: destination.path), try digest(destination) == sha256 {
             output(SetupEvent(.environment, "Using the verified environment download already on this Mac.").line); return
         }

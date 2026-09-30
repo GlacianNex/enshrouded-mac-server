@@ -1,5 +1,14 @@
 # Verification
 
+## Candidate 0.1.11
+
+- Installer input regression reproduced before the fix: a queued click on Open Update Log was never dispatched by the Foundation-only run loop. The AppKit event loop now dispatches the click while still processing worker completion; the regression passes.
+- Startup regression covers creating a second profile and queuing a version check while the first is busy, then dispatching that check when startup completes. Fleet maintenance still blocks profile changes.
+- Download disclosure regression clicks the actual title row away from the arrow to expand and collapse it. Window sizing regression verifies shrinking to shorter content and screen-height bounds; an isolated native preview verified expansion, collapse and compact layout.
+- Installation state regression covers unconfigured, installing, failed and completed states, persisted pending markers, and suppression of player-count lookup text before setup finishes.
+- The old Ubuntu URL returned an HTTP redirect to its archive website. The replacement HTTPS S3 endpoint serves the same pinned archive image. A fresh 615,630,848-byte download through SetupDownload/URLSession succeeded and matched the unchanged SHA-256 checksum.
+- Full suite: 195 tests, zero failures, one opt-in network test skipped in the offline run. That network test passed separately with a fresh download. No production app replacement, server restart or full VM/server installation was performed.
+
 ## Candidate 0.1.10
 
 Manual-install artifact: `dist/Unified-Setup-0.1.10-260930.1508.28/Enshrouded Server Manager.app`. Developer ID signing, Apple notarization, stapling, strict signature verification, Gatekeeper, pre-distribution checks, and both ZIP extraction checks passed. No public release was created. [GitHub CI](https://github.com/GlacianNex/enshrouded-mac-server/actions/runs/36734486106) passed for source commit `e196617`.

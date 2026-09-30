@@ -7,12 +7,13 @@ struct SetupView: View {
     @State private var importedWorld: URL?
     @State private var startWhenReady = true
     @State private var error: String?
+    @State private var downloadsExpanded = false
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         ScrollView { VStack(alignment: .leading, spacing: 16) {
             Text("Set Up Enshrouded").font(.title2.bold())
             if model.setupProgress == nil || (!model.busy && model.setupProgress?.failed == true) {
-                SetupDownloadInfo()
+                SetupDownloadInfo(expanded: $downloadsExpanded)
                 SetupIdentityFields(draft: $draft)
                 SetupWorldOptions(importedWorld: $importedWorld, startWhenReady: $startWhenReady)
             Text("Internet hosting uses UDP \(model.engine.hostPort). Your router must forward that port to this Mac.").font(.caption)
@@ -50,6 +51,10 @@ extension Model {
         setupStartsServer = start
         setupProgress = SetupProgress()
         operation("Setting up server…", preservingSetupProgress: true, work: { engine in
+            let pending = engine.home.appendingPathComponent("needs-setup")
+            try FileManager.default.createDirectory(at: engine.home, withIntermediateDirectories: true)
+            try Data().write(to: pending)
+            do {
             try engine.perform("install") { chunk in Task { @MainActor in self.recordSetupActivity(chunk) } }
             Task { @MainActor in self.recordSetupActivity(SetupEvent(.configure, "Saving settings and preparing the world…").line) }
             try engine.saveSettings(settings)
@@ -57,6 +62,11 @@ extension Model {
             if start {
                 Task { @MainActor in self.recordSetupActivity(SetupEvent(.start, "Starting the server and checking readiness…").line) }
                 try engine.perform("start") { chunk in Task { @MainActor in self.recordSetupActivity(chunk) } } }
+            try? FileManager.default.removeItem(at: pending)
+            } catch {
+                try? Data().write(to: pending)
+                throw error
+            }
         }, completion: { success in
             self.setupProgress?.finish(success: success)
             completion?(success)
@@ -114,10 +124,12 @@ struct SetupProgressView: View {
                         Text("Current step: \(Int(percent))%").font(.caption).monospacedDigit()
                     } else { ProgressView().progressViewStyle(.linear) }
                 }
-                if ![SetupStep.configure, .start].contains(progress.step) {
+                if !progress.failed && ![SetupStep.configure, .start].contains(progress.step) {
                     Text(progress.downloadDetail).font(.caption).foregroundStyle(.secondary)
                 }
-                Text("Keep the manager open. Building and extracting files can take time without downloading more data.").font(.caption).foregroundStyle(.secondary)
+                if !progress.failed {
+                    Text("Keep the manager open. Building and extracting files can take time without downloading more data.").font(.caption).foregroundStyle(.secondary)
+                }
             }
         }.padding(14).background(.background.secondary, in: RoundedRectangle(cornerRadius: 8))
     }
@@ -163,7 +175,7 @@ struct SetupWorldOptions: View {
 }
 
 struct SetupDownloadInfo: View {
-    @State private var expanded = false
+    @Binding var expanded: Bool
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Allow 8 GB of RAM and 30 GB of free disk space per server. Downloads and saved data stay outside the manager app.").font(.callout).foregroundStyle(.secondary)
@@ -174,7 +186,7 @@ struct SetupDownloadInfo: View {
                     }
                     Text("Lima tools are included. Cached downloads are reused. Download size varies with the latest server release and required packages; 30 GB includes extraction and update space.").font(.caption).foregroundStyle(.secondary)
                 }.padding(.top, 6)
-            }
+            }.disclosureGroupStyle(FullRowDisclosureStyle())
         }
     }
 }

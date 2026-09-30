@@ -20,7 +20,7 @@ public struct Engine {
     public var lima: URL { resources.appendingPathComponent("Lima/bin/limactl") }
     public var serverConfig: URL { data.appendingPathComponent("server/enshrouded_server.json") }
 
-    public static let environmentImage = URL(string: "https://cloud-images.ubuntu.com/releases/noble/release-20260705/ubuntu-24.04-server-cloudimg-arm64.img")!
+    public static let environmentImage = URL(string: "https://s3.us-east-1.amazonaws.com/cloud-images-archive.ubuntu.com/releases/noble/release-20260705/ubuntu-24.04-server-cloudimg-arm64.img")!
     public static let environmentDigest = "7df0201546f75b8bcc1044594c806c35749421ad3c9bc1be2a3ab806cfae39cc"
 
     public static func yamlString(_ value: String) -> String {

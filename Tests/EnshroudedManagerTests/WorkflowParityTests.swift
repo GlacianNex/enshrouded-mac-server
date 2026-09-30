@@ -193,6 +193,8 @@ final class WorkflowParityTests: XCTestCase {
             XCTAssertEqual(model.settings.name, settings.name)
             try await settled(model)
             XCTAssertEqual(model.setupProgress?.failed, true, "Fake installer deliberately fails; the same profile must remain retryable")
+            XCTAssertTrue(FileManager.default.fileExists(atPath: model.engine.home.appendingPathComponent("needs-setup").path), "Pending installation must survive reopening the manager")
+            XCTAssertEqual(model.menuTitle, settings.name + " — Installation Pending")
             model.setup(settings, world: nil, start: false)
             try await settled(model)
             XCTAssertEqual(try fleet.store.load().count, before + 1)
@@ -239,6 +241,66 @@ final class WorkflowParityTests: XCTestCase {
             XCTAssertEqual(editor.selectedRange(), NSRange(location: 2, length: 2))
             XCTAssertTrue(window.makeFirstResponder(inputs[1]))
             XCTAssertEqual(name.stringValue, text)
+        }
+    }
+
+    @MainActor func testStartingOneServerDoesNotBlockCreatingAnotherOrRequestingVersionCheck() async throws {
+        try await withFixture { _ in
+            let fleet = FleetModel()
+            defer { fleet.models.forEach { $0.retire() } }
+            for model in fleet.models { try await settled(model) }
+            let starting = fleet.selected
+            let releaseStart = DispatchSemaphore(value: 0)
+            starting.operation("Starting…", action: "start", work: { _ in releaseStart.wait() })
+            defer { releaseStart.signal(); starting.busy = false }
+            XCTAssertTrue(fleet.canChangeProfiles)
+            var settings = ServerSettings()
+            settings.name = "Independent Server"
+            settings.password = "test-player-only"; settings.adminPassword = "test-admin-only"
+            let second = try fleet.create(settings: settings, port: 45679)
+            XCTAssertFalse(second.busy)
+            XCTAssertTrue(starting.busy)
+            starting.checkUpdates()
+            XCTAssertTrue(starting.releaseCheckQueued, "A user check must queue during startup rather than silently do nothing")
+            XCTAssertFalse(starting.checkingRelease, "Do not compete with startup for the same VM")
+            releaseStart.signal()
+            try await settled(starting)
+            starting.afterRefresh()
+            XCTAssertFalse(starting.releaseCheckQueued)
+            XCTAssertTrue(starting.checkingRelease, "Queued check must begin once startup completes")
+            for _ in 0..<100 {
+                if !starting.checkingRelease { break }
+                try await Task.sleep(for: .milliseconds(30))
+            }
+            XCTAssertFalse(starting.checkingRelease)
+            try await settled(second)
+            starting.busy = true // Fleet-wide operations still protect profile mutation.
+            XCTAssertFalse(fleet.canChangeProfiles)
+        }
+    }
+
+    @MainActor func testPendingInstallationNeverShowsPlayerLookupInMenu() async throws {
+        try await withFixture { home in
+            let model = Model(homeOverride: home)
+            defer { model.retire() }
+            try await settled(model)
+            model.state = "NOT_INSTALLED"
+            XCTAssertEqual(model.label, "Installation Pending")
+            XCTAssertEqual(model.peerSummary, "")
+            XCTAssertEqual(model.menuTitle, model.name + " — Installation Pending")
+            model.setupProgress = SetupProgress()
+            model.busy = true
+            model.operationTitle = "Very long installation stage message"
+            XCTAssertEqual(model.menuTitle, model.name + " — Installation Pending")
+            model.busy = false
+            model.state = "VM_STOPPED" // Failed after creating the environment.
+            model.setupProgress?.finish(success: false)
+            XCTAssertEqual(model.menuTitle, model.name + " — Installation Pending")
+            model.setupProgress?.finish(success: true)
+            XCTAssertEqual(model.peerSummary, "0 players")
+            XCTAssertEqual(model.label, "Stopped")
+            model.state = "RUNNING"; model.playerCount = 2
+            XCTAssertEqual(model.peerSummary, "2 players")
         }
     }
 

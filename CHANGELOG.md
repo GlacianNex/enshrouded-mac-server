@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.11 (Candidate)
+
+- Keep installer buttons responsive while waiting for update and relaunch work.
+- Allow creating another server during startup; queue server version checks until the busy server is ready.
+- Download the pinned Ubuntu image directly over HTTPS, avoiding the archive redirect rejected by macOS.
+- Make the whole download-details title row clickable and fit the setup window to its current content.
+- Show Installation Pending without player lookup text until setup completes; preserve pending state after failed setup.
+- Add regression tests for each correction, plus an opt-in fresh image download and checksum check.
+
 ## 0.1.10 (Candidate)
 
 - Combine new-server identity, port, world import and startup choices into one form. Create & Set Up starts installation directly and shows progress in the same window.

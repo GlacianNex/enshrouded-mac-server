@@ -76,7 +76,7 @@ import EnshroudedCore
         row.view = container
         let target = StatusMenuAction { [weak self] in
             guard let self else { return }
-            for server in self.fleet.configuredModels where !server.busy { server.checkUpdates() }
+            for server in self.fleet.configuredModels where server.canRequestReleaseCheck { server.checkUpdates() }
             self.refreshStatus()
         }
         actions.append(target)
@@ -87,13 +87,16 @@ import EnshroudedCore
             if let checking = models.first(where: \.checkingRelease) {
                 button.title = checking.releaseCheckSummary
                 button.isEnabled = false
+            } else if models.contains(where: \.releaseCheckQueued) {
+                button.title = "Update Check Queued · Waiting for Server"
+                button.isEnabled = models.contains { $0.canRequestReleaseCheck && !$0.releaseCheckQueued }
             } else {
                 let failed = models.contains { $0.releaseError != nil }
                 let checked = models.contains { $0.releaseCheckedAt != nil }
                 let known = models.allSatisfy { $0.release?.installed != nil }
                 let available = models.contains { $0.release?.updateAvailable == true }
                 button.title = failed ? "Update Check Failed · Retry" : available ? "Server Update Available · Check Again" : checked ? (known ? "Servers Are Up to Date · Check Again" : "Valve Check Complete · Check Again") : "Check for Server Updates"
-                button.isEnabled = models.contains { !$0.busy && ["INSTALLED", "RUNNING", "VM_STOPPED"].contains($0.state) }
+                button.isEnabled = models.contains { $0.canRequestReleaseCheck }
             }
             button.toolTip = models.compactMap(\.releaseError).first ?? "Checks Valve for a newer server version. No game files are installed."
         }
@@ -141,10 +144,9 @@ import EnshroudedCore
         menu.addItem(.separator())
         for server in fleet.configuredModels {
             let submenu = NSMenu(); submenu.autoenablesItems = false
-            let count = server.stopped ? "0 players" : server.playerCount.map { "\($0) players" } ?? "Players: checking…"
-            let row = NSMenuItem(title: "\(server.name) — \(server.label) · \(count)", action: nil, keyEquivalent: "")
+            let row = NSMenuItem(title: server.menuTitle, action: nil, keyEquivalent: "")
             row.submenu = submenu; menu.addItem(row)
-            liveRows.append { [weak row] in row?.title = "\(server.name) — \(server.label) · \(server.peerSummary)" }
+            liveRows.append { [weak row] in row?.title = server.menuTitle }
             if let address = server.endpoint { add("Join address: \(address) · Copy", to: submenu) { server.copy(address) } }
             else { add("Join address: unavailable", to: submenu) }
             add("Copy Player Password", to: submenu, enabled: !server.settings.password.isEmpty) { server.copy(server.settings.password) }

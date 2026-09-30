@@ -72,7 +72,7 @@ struct GameplayRulesView: View {
 }
 
 /// Keep expansion independent of whether the rule controls are editable.
-private struct FullRowDisclosureStyle: DisclosureGroupStyle {
+struct FullRowDisclosureStyle: DisclosureGroupStyle {
     func makeBody(configuration: Configuration) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Button {
