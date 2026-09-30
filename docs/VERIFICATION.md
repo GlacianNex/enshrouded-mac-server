@@ -2,6 +2,8 @@
 
 ## Candidate 0.1.11
 
+Manual-install artifact: `dist/Setup-Fixes-0.1.11-260930.1531.53/Enshrouded Server Manager.app`. Developer ID signing, Apple notarization, stapling, strict signature verification, Gatekeeper, pre-distribution checks, and both ZIP extraction checks passed. No public release was created. [GitHub CI](https://github.com/GlacianNex/enshrouded-mac-server/actions/runs/36737548811) passed for source commit `792e466`.
+
 - Installer input regression reproduced before the fix: a queued click on Open Update Log was never dispatched by the Foundation-only run loop. The AppKit event loop now dispatches the click while still processing worker completion; the regression passes.
 - Startup regression covers creating a second profile and queuing a version check while the first is busy, then dispatching that check when startup completes. Fleet maintenance still blocks profile changes.
 - Download disclosure regression clicks the actual title row away from the arrow to expand and collapse it. Window sizing regression verifies shrinking to shorter content and screen-height bounds; an isolated native preview verified expansion, collapse and compact layout.
