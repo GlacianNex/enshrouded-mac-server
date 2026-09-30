@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// One independent log window per server, shared by every log entry point.
+/// One independent log window per source, shared by every log entry point.
 @MainActor final class LogsWindowController: NSWindowController, NSWindowDelegate {
     private static var openWindows: [String: LogsWindowController] = [:]
     private let serverID: String
@@ -16,18 +16,35 @@ import SwiftUI
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    private init(model: Model) {
-        serverID = model.engine.home.path
+    static func close(updateLog: URL) { openWindows["update:" + updateLog.standardizedFileURL.path]?.window?.performClose(nil) }
+    static func show(updateLog: URL) {
+        let key = "update:" + updateLog.standardizedFileURL.path
+        let controller = openWindows[key] ?? LogsWindowController(key: key, title: "Manager Update Log") { close in
+            AnyView(LogsView(updateLog: updateLog, close: close))
+        }
+        openWindows[key] = controller
+        controller.showWindow(nil)
+        controller.window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private convenience init(model: Model) {
+        self.init(key: model.engine.home.path, title: "Server Logs — " + model.name) { close in
+            AnyView(LogsView(model: model, close: close))
+        }
+    }
+    private init(key: String, title: String, content: (@escaping () -> Void) -> AnyView) {
+        serverID = key
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 580),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable],
                               backing: .buffered, defer: false)
         super.init(window: window)
-        window.title = "Server Logs — \(model.name)"
+        window.title = title
         window.isReleasedWhenClosed = false
         window.contentMinSize = NSSize(width: 620, height: 400)
         window.center()
         window.setFrameAutosaveName("ServerLogs-\(serverID)")
-        window.contentView = NSHostingView(rootView: LogsView(model: model, close: { [weak window] in window?.performClose(nil) }))
+        window.contentView = NSHostingView(rootView: content { [weak window] in window?.performClose(nil) })
         window.delegate = self
     }
 

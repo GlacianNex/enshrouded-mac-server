@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.12 (Candidate)
+
+- Open update logs in the built-in viewer, including during standalone installation, with filtering, readable formatting, line numbers, wrapping and live refresh.
+- Reuse an existing update-log window and wait for the log to appear instead of launching Console or Finder.
+- Cover the actual update button, viewer reuse, missing-file handling and live log refresh with regression tests.
+
 ## 0.1.11 (Candidate)
 
 - Keep installer buttons responsive while waiting for update and relaunch work.

@@ -131,7 +131,8 @@ struct SettingsView: View {
     }
 }
 struct LogsView: View {
-    @ObservedObject var model: Model
+    private let engine: Engine?
+    private let updateLog: URL?
     @State private var selected = "Server"
     @State private var filter = ""
     @State private var autoScroll = true
@@ -140,10 +141,19 @@ struct LogsView: View {
     @State private var currentManagerLog = ""
     @State private var loading = true
     var close: () -> Void
+    init(model: Model, close: @escaping () -> Void) {
+        engine = model.engine; updateLog = nil; self.close = close
+    }
+    init(updateLog: URL, close: @escaping () -> Void) {
+        engine = nil; self.updateLog = updateLog; self.close = close
+        _selected = State(initialValue: "Manager")
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack { Text("Server Logs").font(.title2.bold()); Spacer(); Button("Done", action: close) }
-            Picker("Log", selection: $selected) { Text("Server").tag("Server"); Text("Manager Activity").tag("Manager") }.pickerStyle(.segmented)
+            HStack { Text(updateLog == nil ? "Server Logs" : "Manager Update Log").font(.title2.bold()); Spacer(); Button("Done", action: close) }
+            if updateLog == nil {
+                Picker("Log", selection: $selected) { Text("Server").tag("Server"); Text("Manager Activity").tag("Manager") }.pickerStyle(.segmented)
+            }
             TextField("Filter log lines", text: $filter)
             HStack(spacing: 16) {
                 Toggle("Auto-scroll", isOn: $autoScroll).toggleStyle(.checkbox)
@@ -157,13 +167,20 @@ struct LogsView: View {
             HStack {
                 Text(selected == "Server" ? "Latest 256 KB · refreshes every second" : "Server manager and installer activity · refreshes every second")
                     .font(.caption).foregroundStyle(.secondary)
-                Spacer(); Button("Open Log Folder") { NSWorkspace.shared.open(selected == "Server" ? model.engine.serverLogFolder : model.engine.home) }
+                Spacer(); Button("Open Log Folder") {
+                    if let updateLog { NSWorkspace.shared.open(updateLog.deletingLastPathComponent()) }
+                    else if let engine { NSWorkspace.shared.open(selected == "Server" ? engine.serverLogFolder : engine.home) }
+                }
             }
         }.padding(20).frame(minWidth: 620, minHeight: 400)
         .task {
-            let engine = model.engine
             while !Task.isCancelled {
                 let logs = await Task.detached(priority: .utility) { () -> (String, String) in
+                    if let updateLog {
+                        do { return ("", String(decoding: try ManagerActivityLog.read(updateLog), as: UTF8.self)) }
+                        catch { return ("", "Could not read update log: " + error.localizedDescription) }
+                    }
+                    guard let engine else { return ("", "") }
                     let installer = Engine(home: FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/Enshrouded Manager/Installer"), resources: engine.resources)
                     let installText = ProcessInfo.processInfo.environment["ESM_HOME"] == nil ? installer.activityTail() : ""
                     return (engine.logTail(), engine.activityTail() + (installText.isEmpty ? "" : "\n— Manager Installer —\n" + installText))
@@ -181,7 +198,7 @@ struct LogsView: View {
         LogDisplay.readable(selected == "Server" ? currentServerLog : currentManagerLog, filter: filter)
     }
     private var displayed: String {
-        if selected == "Server" && loading { return "Loading logs…" }
+        if loading { return "Loading logs…" }
         if !filtered.isEmpty { return filtered }
         if !filter.isEmpty { return "No matching log lines." }
         return selected == "Server" ? "No server log yet. Start the server to create one." : "No manager activity recorded yet."

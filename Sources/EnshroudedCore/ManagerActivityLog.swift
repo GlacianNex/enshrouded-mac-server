@@ -15,7 +15,7 @@ public enum ManagerActivityLog {
         return tail
     }
 
-    static func read(_ url: URL) throws -> Data {
+    public static func read(_ url: URL) throws -> Data {
         let descriptor = open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
         if descriptor < 0 {
             if errno == ENOENT { return Data() }

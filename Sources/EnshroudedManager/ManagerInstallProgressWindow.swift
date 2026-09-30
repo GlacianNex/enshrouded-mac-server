@@ -10,10 +10,7 @@ import EnshroudedCore
     private var timer: Timer?
     private let logURL: URL
 
-    private let openURL: (URL) -> Bool
-
-    init(logURL: URL, openURL: @escaping (URL) -> Bool = { NSWorkspace.shared.open($0) }) {
-        self.openURL = openURL
+    init(logURL: URL) {
         self.logURL = logURL
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 205), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
@@ -43,7 +40,6 @@ import EnshroudedCore
         elapsed.stringValue = progress.elapsed()
     }
     @objc private func openLog() {
-        if FileManager.default.fileExists(atPath: logURL.path) { _ = openURL(logURL) }
-        else { _ = openURL(logURL.deletingLastPathComponent()) }
+        LogsWindowController.show(updateLog: logURL)
     }
 }
