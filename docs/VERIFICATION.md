@@ -1,5 +1,15 @@
 # Verification
 
+## Candidate 0.1.13
+
+Manual-install artifact: `dist/Install-Progress-0.1.13-260930.1556.03/Enshrouded Server Manager.app`. Developer ID signing, Apple notarization, stapling, strict signature verification, Gatekeeper, pre-distribution checks, and both ZIP extraction checks passed. No public release was created. [GitHub CI](https://github.com/GlacianNex/enshrouded-mac-server/actions/runs/36740619633) passed for source commit `9031cbf`.
+
+- A bundled guest helper streams CMake output and reports configuration/build/install phase, actual compiler percentage, process state, elapsed time, last-output age and sampled descendant CPU activity every five seconds. No percentage is invented for configure/install. Missing heartbeats are reported after 15 seconds without asserting that the build is stuck.
+- Four offline Python tests cover quiet-process heartbeats, split progress lines, invalid/regressing percentages, unchanged failures/exit codes, phase separation and descendant CPU sampling. They run in CI alongside the existing downloader tests.
+- Swift regressions cover phase/percentage resets, preserving download history without labelling build work as downloads, quiet heartbeat handling, stale status and failure evidence. Full suite: 198 tests, zero failures, one opt-in large-download test skipped.
+- Linux smoke checks passed for actual CPU activity and a temporary CMake project configured, compiled to a reported 100%, then installed into its temporary directory. The full Box64 build was not repeated. Existing server configuration, runtime files and service state were not changed.
+- The new guest monitor applies to subsequent setup runs using this manager; it cannot add heartbeats to a build already running an older helper.
+
 ## Candidate 0.1.12
 
 Manual-install artifact: `dist/Log-Viewer-0.1.12-260930.1543.15/Enshrouded Server Manager.app`. Developer ID signing, Apple notarization, stapling, strict signature verification, Gatekeeper, pre-distribution checks, and both ZIP extraction checks passed. No public release was created. [GitHub CI](https://github.com/GlacianNex/enshrouded-mac-server/actions/runs/36738838366) passed for source commit `baeb5e3`.
