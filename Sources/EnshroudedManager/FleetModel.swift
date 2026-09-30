@@ -55,7 +55,9 @@ import EnshroudedCore
         selectedID = initialModels[0].engine.home.path
         error = loadError
         observe()
-        ApplicationLifetime.isBusy = { [weak self] in self?.models.contains { $0.busy } ?? false }
+        ApplicationLifetime.activeOperations = { [weak self] in
+            self?.models.filter(\.busy).map { "\($0.name): \($0.operationTitle)" } ?? []
+        }
         if !selected.build.experimental && !isolated {
             checkManagerUpdates()
             managerTimer = Timer.scheduledTimer(withTimeInterval: 5 * 60, repeats: true) { [weak self] _ in

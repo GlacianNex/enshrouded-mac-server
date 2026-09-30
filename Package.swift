@@ -5,5 +5,6 @@ let package = Package(name: "EnshroudedServerManager", platforms: [.macOS(.v14)]
 ], targets: [
     .target(name: "EnshroudedCore"),
     .executableTarget(name: "EnshroudedManager", dependencies: ["EnshroudedCore"]),
-    .testTarget(name: "EnshroudedCoreTests", dependencies: ["EnshroudedCore"])
+    .testTarget(name: "EnshroudedCoreTests", dependencies: ["EnshroudedCore"]),
+    .testTarget(name: "EnshroudedManagerTests", dependencies: ["EnshroudedManager"])
 ])

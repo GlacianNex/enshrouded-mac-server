@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.8 (Candidate)
+
+- Replace the blocking generic quit warning with a live notice naming the server and active operation.
+- Close the notice automatically when work ends, reuse it for repeated quit requests, and honor the manager-update relaunch bypass.
+
 ## 0.1.7 (Candidate)
 
 - Open logs in an independent movable, resizable window; keep line numbers inside the log pane.

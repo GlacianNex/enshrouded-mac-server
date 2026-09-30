@@ -27,10 +27,14 @@ struct EnshroudedApp: App {
 
 
 @MainActor enum ApplicationLifetime {
-    static var isBusy: () -> Bool = { false }
+    static var activeOperations: () -> [String] = { [] }
+    static var isBusy: Bool { !activeOperations().isEmpty }
     static var allowTermination = false
 }
 @MainActor final class ManagerAppDelegate: NSObject, NSApplicationDelegate {
+    private(set) var quitNotice: NSAlert?
+    private var quitNoticeTimer: Timer?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // AppKit's default quit Apple event can remain pending behind a sheet.
         // Handle the external request before the normal termination guard.
@@ -39,7 +43,7 @@ struct EnshroudedApp: App {
                                                      andEventID: AEEventID(kAEQuitApplication))
     }
     @objc private func handleQuit(_ event: NSAppleEventDescriptor, reply: NSAppleEventDescriptor) {
-        guard !ApplicationLifetime.isBusy() else {
+        guard ApplicationLifetime.allowTermination || !ApplicationLifetime.isBusy else {
             reply.setParam(NSAppleEventDescriptor(int32: Int32(userCanceledErr)), forKeyword: AEKeyword(keyErrorNumber))
             return
         }
@@ -50,10 +54,44 @@ struct EnshroudedApp: App {
         NSApp.terminate(nil)
     }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard !ApplicationLifetime.allowTermination, ApplicationLifetime.isBusy() else { return .terminateNow }
-        let alert = NSAlert(); alert.messageText = "Server maintenance is still running"
-        alert.informativeText = "Wait for setup, update, saving or recovery to finish before quitting the manager."
-        alert.addButton(withTitle: "Keep Manager Open"); alert.runModal()
+        guard !ApplicationLifetime.allowTermination, ApplicationLifetime.isBusy else {
+            dismissQuitNotice()
+            return .terminateNow
+        }
+        if quitNotice == nil {
+            let alert = NSAlert()
+            alert.messageText = "An Operation Is Still Running"
+            let button = alert.addButton(withTitle: "Keep Manager Open")
+            button.target = self
+            button.action = #selector(dismissQuitNotice)
+            quitNotice = alert
+            refreshQuitNotice()
+            alert.window.center()
+            alert.window.makeKeyAndOrderFront(nil)
+            let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
+                Task { @MainActor in self?.refreshQuitNotice() }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            quitNoticeTimer = timer
+        } else { quitNotice?.window.makeKeyAndOrderFront(nil) }
+        // Never enter runModal here: server completions must keep executing,
+        // and the notice must disappear as soon as the operation finishes.
         return .terminateCancel
+    }
+    func refreshQuitNotice() {
+        let operations = ApplicationLifetime.activeOperations()
+        guard !ApplicationLifetime.allowTermination, !operations.isEmpty else {
+            dismissQuitNotice()
+            return
+        }
+        let message = operations.joined(separator: "\n") + "\n\nWait for this to finish before quitting. This message closes automatically."
+        if quitNotice?.informativeText != message {
+            quitNotice?.informativeText = message
+            quitNotice?.layout()
+        }
+    }
+    @objc func dismissQuitNotice() {
+        quitNoticeTimer?.invalidate(); quitNoticeTimer = nil
+        quitNotice?.window.close(); quitNotice = nil
     }
 }
