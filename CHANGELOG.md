@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.14 (Candidate)
+
+- Relaunch in the menu bar after manager updates; open Server Management only when requested.
+- Show setup output in a dedicated Installation log tab, including live build output, failures and retries.
+- Add Clear Installation Downloads to the global menu. Clear shared caches and prevent older installations from silently repopulating them; keep existing servers and worlds intact.
+- Add regression coverage for launch windows, setup log routing and cache clearing.
+
 ## 0.1.13 (Candidate)
 
 - Show actual compiler build-step percentages during processor compatibility setup, with separate configuring, compiling and installing phases.

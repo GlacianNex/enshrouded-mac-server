@@ -22,6 +22,7 @@ import EnshroudedCore
     var statusMenu: StatusMenu?
     private var subscriptions: Set<AnyCancellable> = []
     let store: ProfileStore
+    @Published var clearingDownloads = false
     let sharedDownloads: URL
     var selected: Model { models.first { $0.engine.home.path == selectedID } ?? models[0] }
     init() {
@@ -56,7 +57,8 @@ import EnshroudedCore
         error = loadError
         observe()
         ApplicationLifetime.activeOperations = { [weak self] in
-            self?.models.filter(\.busy).map { "\($0.name): \($0.operationTitle)" } ?? []
+            guard let self else { return [] }
+            return models.filter(\.busy).map { "\($0.name): \($0.operationTitle)" } + (clearingDownloads ? ["Clearing installation downloads"] : [])
         }
         if !selected.build.experimental && !isolated {
             checkManagerUpdates()
@@ -92,7 +94,7 @@ import EnshroudedCore
             managerAtLogin = enabled
         } catch { self.error = "Could not change manager login startup: " + error.localizedDescription }
     }
-    var canChangeProfiles: Bool { !models.contains { $0.busy && !["start", "stop", "restart"].contains($0.activeAction ?? "") } }
+    var canChangeProfiles: Bool { !clearingDownloads && !models.contains { $0.busy && !["start", "stop", "restart"].contains($0.activeAction ?? "") } }
     func createAndSetUp(settings: ServerSettings, port: Int, world: URL?, start: Bool) throws -> Model {
         let model = try create(settings: settings, port: port)
         model.setup(settings, world: world, start: start)
@@ -105,7 +107,7 @@ import EnshroudedCore
         var profiles = try store.load()
         guard (1024...65535).contains(port), !profiles.contains(where: { $0.port == port }) else { throw EngineError("Choose an unused UDP port from 1024–65535") }
         let id = String(UUID().uuidString.prefix(8)).lowercased()
-        let retained = try store.retainedInstallations().first { $0.port == port && FileManager.default.fileExists(atPath: $0.home) }
+        let retained = try store.retainedInstallations().first { selected.engine.canReuseInstallation(at: URL(fileURLWithPath: $0.home)) && $0.port == port && FileManager.default.fileExists(atPath: $0.home) }
         let root = retained.map { URL(fileURLWithPath: $0.home) } ?? (ProcessInfo.processInfo.environment["ESM_HOME"] != nil
             ? store.registry.deletingLastPathComponent().appendingPathComponent("servers/\(id)")
             : FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/ESM/\(id)"))
@@ -123,7 +125,6 @@ import EnshroudedCore
     }
 }
 struct FleetView: View {
-    @Environment(\.openWindow) private var openWindow
     @ObservedObject var fleet: FleetModel
     var body: some View {
         VStack(spacing: 0) {
@@ -137,8 +138,6 @@ struct FleetView: View {
             } else {
                 ManagementView(model: fleet.selected, removeServer: { fleet.removeSelectedServer() }).id(fleet.selectedID)
             }
-        }.onAppear {
-            if fleet.statusMenu == nil { fleet.statusMenu = StatusMenu(fleet: fleet, showManagement: { openWindow(id: "management") }) }
         }
     }
 }
@@ -342,6 +341,29 @@ extension FleetModel {
                     catch { self.error = "Server deleted, but login startup cleanup failed: " + error.localizedDescription }
                 }
             } catch { model.error = error.localizedDescription; model.busy = false; model.refresh() }
+        }
+    }
+    var canClearDownloads: Bool { !clearingDownloads && !models.contains { $0.busy } }
+    func clearDownloadCache() {
+        guard canClearDownloads else { return }
+        let alert = NSAlert(); alert.messageText = "Clear Installation Downloads?"
+        alert.informativeText = "Deletes shared downloads and prevents new servers from reusing older installations. The next new server downloads everything again. Existing servers, worlds and settings stay intact."
+        alert.addButton(withTitle: "Clear Downloads"); alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        clearingDownloads = true
+        let engine = selected.engine
+        Task {
+            let result = NSAlert()
+            do {
+                try await Task.detached { try engine.clearSharedDownloads() }.value
+                result.messageText = "Installation Downloads Cleared"
+                result.informativeText = "Create a new server to test a fresh download and installation. Existing servers are unchanged."
+            } catch {
+                result.messageText = "Could Not Clear Downloads"
+                result.informativeText = error.localizedDescription
+            }
+            clearingDownloads = false
+            result.addButton(withTitle: "OK"); result.runModal()
         }
     }
     func uninstallServerFiles() {

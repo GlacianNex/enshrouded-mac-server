@@ -33,6 +33,8 @@ public enum ManagerActivityLog {
 }
 
 extension Engine {
+    public var setupLogEngine: Engine { Engine(home: home.appendingPathComponent("setup-log"), resources: resources) }
+
     public func activityTail() -> String {
         String(decoding: (try? ManagerActivityLog.read(home.appendingPathComponent("manager-activity.log"))) ?? Data(), as: UTF8.self)
     }

@@ -5,10 +5,13 @@ import SwiftUI
 @MainActor final class LogsWindowController: NSWindowController, NSWindowDelegate {
     private static var openWindows: [String: LogsWindowController] = [:]
     private let serverID: String
+    private var showsSetup = false
 
     static func close(_ model: Model) { openWindows[model.engine.home.path]?.window?.performClose(nil) }
     static func show(model: Model) {
         let key = model.engine.home.path
+        let setup = model.installationPending || model.setupProgress != nil
+        if let existing = openWindows[key], existing.showsSetup != setup { existing.window?.close() }
         let controller = openWindows[key] ?? LogsWindowController(model: model)
         openWindows[key] = controller
         controller.showWindow(nil)
@@ -32,6 +35,7 @@ import SwiftUI
         self.init(key: model.engine.home.path, title: "Server Logs — " + model.name) { close in
             AnyView(LogsView(model: model, close: close))
         }
+        showsSetup = model.installationPending || model.setupProgress != nil
     }
     private init(key: String, title: String, content: (@escaping () -> Void) -> AnyView) {
         serverID = key

@@ -238,10 +238,18 @@ import EnshroudedCore
             activityWriter.async { continuation.resume() }
         }
     }
+    func resetSetupLog() {
+        let log = engine.setupLogEngine.home.appendingPathComponent("manager-activity.log")
+        activityWriter.async { try? FileManager.default.removeItem(at: log) }
+    }
     func recordActivity(_ text: String) {
         activity = String((activity + text).suffix(256_000))
         let engine = engine
-        activityWriter.async { try? engine.appendActivity(text) }
+        let setup = busy && setupProgress != nil
+        activityWriter.async {
+            try? engine.appendActivity(text)
+            if setup { try? engine.setupLogEngine.appendActivity(text) }
+        }
     }
     func run(_ action: String) {
         let titles = ["start": "Starting…", "stop": "Saving & stopping…", "restart": "Restarting…", "update": "Updating server…", "install": "Setting up server…", "shutdown": "Shutting down…"]

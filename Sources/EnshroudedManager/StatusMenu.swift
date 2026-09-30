@@ -22,6 +22,12 @@ import EnshroudedCore
         }
         RunLoop.main.add(statusTimer, forMode: .common); timer = statusTimer
     }
+    func invalidate() {
+        timer?.invalidate(); timer = nil
+        actions.removeAll(); liveRows.removeAll()
+        item.menu = nil
+        NSStatusBar.system.removeStatusItem(item)
+    }
     func refreshStatus() {
         for update in liveRows { update() }
         item.button?.image = MenuBranding.image(running: fleet.models.contains { $0.state == "RUNNING" }, busy: fleet.models.contains { $0.busy || $0.state == "RECOVERING" })
@@ -175,6 +181,7 @@ import EnshroudedCore
         addLive(to: menu, title: { "Open Manager at Login" }, enabled: { true }, checked: { [weak self] in self?.fleet.managerAtLogin == true }) {
             self.fleet.setManagerAtLogin(!self.fleet.managerAtLogin)
         }
+        addLive(to: menu, title: { [weak self] in self?.fleet.clearingDownloads == true ? "Clearing Installation Downloads…" : "Clear Installation Downloads…" }, enabled: { [weak self] in self?.fleet.canClearDownloads == true }) { self.fleet.clearDownloadCache() }
         addLive(to: menu, title: { "Uninstall Server Files…" }, enabled: { [weak self] in self?.fleet.models.contains(where: \.busy) == false }) { self.fleet.uninstallServerFiles() }
         addLive(to: menu, title: { "Quit Manager (Servers Keep Running)" }, enabled: { [weak self] in self?.fleet.models.contains(where: \.busy) == false }) { NSApp.terminate(nil) }
     }

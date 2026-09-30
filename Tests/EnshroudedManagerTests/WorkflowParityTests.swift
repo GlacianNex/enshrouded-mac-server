@@ -304,4 +304,110 @@ final class WorkflowParityTests: XCTestCase {
         }
     }
 
+    @MainActor func testUpdateRelaunchCreatesMenuWithoutManagementWindow() async throws {
+        try await withFixture { _ in
+            let fleet = FleetModel()
+            let delegate = ManagerAppDelegate()
+            defer {
+                delegate.managementWindow?.close()
+                fleet.statusMenu?.invalidate(); fleet.statusMenu = nil
+                fleet.models.forEach { $0.retire() }
+            }
+            for model in fleet.models { try await settled(model) }
+            let visibleBefore = Set(NSApp.windows.filter { $0.isVisible && $0.styleMask.contains(.titled) }.map(\.windowNumber))
+            delegate.start(fleet: fleet, afterUpdate: true)
+            XCTAssertNotNil(fleet.statusMenu, "The menu must not depend on management appearing")
+            XCTAssertNil(delegate.managementWindow)
+            XCTAssertEqual(Set(NSApp.windows.filter { $0.isVisible && $0.styleMask.contains(.titled) }.map(\.windowNumber)), visibleBefore)
+            XCTAssertTrue(delegate.fleet === fleet, "The fleet must stay alive and continue hosting without a window")
+            fleet.statusMenu?.openSelectedManagement()
+            let opened = try XCTUnwrap(delegate.managementWindow)
+            XCTAssertTrue(opened.isVisible)
+            fleet.statusMenu?.openSelectedManagement()
+            XCTAssertTrue(delegate.managementWindow === opened, "Repeated menu actions reuse the same window")
+            opened.close()
+            XCTAssertNil(delegate.managementWindow)
+            XCTAssertNil(opened.contentView)
+            XCTAssertNotNil(fleet.statusMenu)
+            XCTAssertFalse(delegate.applicationShouldTerminateAfterLastWindowClosed(NSApp))
+            fleet.statusMenu?.openSelectedManagement()
+            XCTAssertTrue(delegate.managementWindow?.isVisible == true)
+        }
+    }
+    @MainActor func testNormalLaunchStillOpensManagement() async throws {
+        try await withFixture { _ in
+            let fleet = FleetModel()
+            let delegate = ManagerAppDelegate()
+            defer {
+                delegate.managementWindow?.close()
+                fleet.statusMenu?.invalidate(); fleet.statusMenu = nil
+                fleet.models.forEach { $0.retire() }
+            }
+            for model in fleet.models { try await settled(model) }
+            delegate.start(fleet: fleet, afterUpdate: false)
+            XCTAssertTrue(delegate.managementWindow?.isVisible == true)
+            XCTAssertNotNil(fleet.statusMenu)
+        }
+    }
+
+    @MainActor func testSetupLogOpensInstallationOutputAndRefreshes() async throws {
+        try await withFixture { home in
+            let model = Model(homeOverride: home)
+            defer { LogsWindowController.close(model); model.retire() }
+            try await settled(model)
+            LogsWindowController.show(model: model)
+            let previousWindow = NSApp.windows.first { $0.isVisible && $0.title == "Server Logs — " + model.name }
+            model.recordActivity("Unrelated manager activity\n")
+            model.resetSetupLog()
+            model.setupProgress = SetupProgress(); model.busy = true
+            model.recordSetupActivity("Configuring processor compatibility\n")
+            await model.flushActivity()
+            LogsWindowController.show(model: model)
+            let window = try XCTUnwrap(NSApp.windows.first { $0.isVisible && $0.title == "Server Logs — " + model.name })
+            @MainActor func text(_ view: NSView) -> String {
+                if let editor = view as? NSTextView, !editor.isEditable { return editor.string }
+                return view.subviews.map(text).joined(separator: "\n")
+            }
+            @MainActor func waitFor(_ expected: String) async throws {
+                for _ in 0..<60 {
+                    if text(window.contentView!).contains(expected) { return }
+                    try await Task.sleep(for: .milliseconds(50))
+                }
+                XCTFail("Installation viewer did not display " + expected)
+            }
+            XCTAssertNil(previousWindow?.contentView, "Reopening logs during setup must switch away from an earlier game-log view")
+            try await waitFor("Configuring processor compatibility")
+            XCTAssertFalse(text(window.contentView!).contains("Unrelated manager activity"))
+            model.recordActivity("Setting up server failed: fixture failure\n")
+            await model.flushActivity()
+            try await waitFor("fixture failure")
+            model.resetSetupLog(); model.recordSetupActivity("Retrying installation\n")
+            await model.flushActivity()
+            try await waitFor("Retrying installation")
+            XCTAssertFalse(text(window.contentView!).contains("fixture failure"))
+            model.busy = false
+        }
+    }
+
+    @MainActor func testClearedCacheCreatesFreshServerInsteadOfReusingRetainedEnvironment() async throws {
+        try await withFixture { home in
+            let fleet = FleetModel()
+            defer { fleet.models.forEach { $0.retire() } }
+            for model in fleet.models { try await settled(model) }
+            let retained = home.deletingLastPathComponent().appendingPathComponent("retained")
+            try FileManager.default.createDirectory(at: retained, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: fleet.store.retainedDirectory, withIntermediateDirectories: true)
+            try JSONEncoder().encode(ServerProfile(id: "old", name: "Old", home: retained.path, port: 45678))
+                .write(to: fleet.store.retainedDirectory.appendingPathComponent("old.json"))
+            try fleet.selected.engine.clearSharedDownloads()
+            var settings = ServerSettings(); settings.name = "Fresh Installation"
+            settings.password = "test-only-password"; settings.adminPassword = "different-test-password"
+            let model = try fleet.create(settings: settings, port: 45678)
+            XCTAssertNotEqual(model.engine.home, retained)
+            XCTAssertTrue(model.installationPending)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: retained.path))
+            try await settled(model)
+        }
+    }
+
 }

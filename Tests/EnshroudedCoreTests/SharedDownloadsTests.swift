@@ -50,4 +50,34 @@ final class SharedDownloadsTests: XCTestCase {
         XCTAssertThrowsError(try engine.withSharedDownloads { throw EngineError("fixture failure") })
         XCTAssertNoThrow(try engine.withSharedDownloads { })
     }
+    func testClearDownloadsKeepsServersAndPreventsLegacyReseeding() throws {
+        let (root, engine, source, _) = try fixture()
+        let shared = try XCTUnwrap(engine.sharedDownloads)
+        try FileManager.default.createDirectory(at: shared, withIntermediateDirectories: true)
+        for name in ["ubuntu.img", "components/archive", "packages/package.deb", "server/enshrouded_server.exe"] {
+            let file = shared.appendingPathComponent(name)
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data("cached".utf8).write(to: file)
+        }
+        let binary = source.appendingPathComponent("data/server/enshrouded_server.exe")
+        try FileManager.default.createDirectory(at: binary.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("installed".utf8).write(to: binary)
+        let store = ProfileStore(registry: root.appendingPathComponent("profiles.json"))
+        try store.save([ServerProfile(id: "donor", name: "Existing", home: source.path, port: 15637)])
+        try engine.withSharedDownloads { XCTAssertThrowsError(try engine.clearSharedDownloads()) }
+        XCTAssertTrue(engine.canReuseInstallation(at: source))
+        try engine.clearSharedDownloads()
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: shared.path), [])
+        XCTAssertEqual(try String(contentsOf: binary), "installed")
+        XCTAssertFalse(engine.canReuseInstallation(at: source))
+        XCTAssertTrue(engine.canReuseInstallation(at: root.appendingPathComponent("future-server")))
+        try engine.prepareSharedDownloads { _ in }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: engine.data.appendingPathComponent("server/enshrouded_server.exe").path))
+        // Downloads from future setups can still be shared normally.
+        try FileManager.default.createDirectory(at: engine.data.appendingPathComponent("server"), withIntermediateDirectories: true)
+        try Data("fresh".utf8).write(to: engine.data.appendingPathComponent("server/enshrouded_server.exe"))
+        try engine.publishSharedServerFiles()
+        XCTAssertEqual(try String(contentsOf: shared.appendingPathComponent("server/enshrouded_server.exe")), "fresh")
+    }
+
 }

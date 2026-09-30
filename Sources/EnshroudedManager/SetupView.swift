@@ -48,6 +48,7 @@ struct SetupView: View {
 extension Model {
     func setup(_ settings: ServerSettings, world: URL?, start: Bool, completion: ((Bool) -> Void)? = nil) {
         guard !busy else { return }
+        resetSetupLog()
         setupStartsServer = start
         setupProgress = SetupProgress()
         operation("Setting up server…", preservingSetupProgress: true, work: { engine in

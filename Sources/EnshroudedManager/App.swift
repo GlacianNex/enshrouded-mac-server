@@ -1,13 +1,38 @@
 import SwiftUI
 import EnshroudedCore
 
-struct EnshroudedApp: App {
-    @NSApplicationDelegateAdaptor(ManagerAppDelegate.self) private var delegate
-    @StateObject private var fleet = FleetModel()
-    var body: some Scene {
-        Window("Server Management", id: "management") { FleetView(fleet: fleet) }
-            .defaultSize(width: 640, height: 860)
-            .windowResizability(.contentSize)
+@MainActor enum EnshroudedApp {
+    static func main() {
+        let delegate = ManagerAppDelegate()
+        NSApp.delegate = delegate
+        installMainMenu()
+        // AppKit owns the lifetime; no SwiftUI scene opens a window implicitly.
+        withExtendedLifetime(delegate) { NSApp.run() }
+    }
+    static func installMainMenu() {
+        let bar = NSMenu()
+        func submenu(_ title: String) -> NSMenu {
+            let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+            let menu = NSMenu(title: title); item.submenu = menu; bar.addItem(item)
+            return menu
+        }
+        let app = submenu("Enshrouded")
+        app.addItem(withTitle: "About Enshrouded", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        app.addItem(.separator())
+        app.addItem(withTitle: "Hide Enshrouded", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        app.addItem(withTitle: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
+        app.addItem(.separator())
+        app.addItem(withTitle: "Quit Enshrouded", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        let edit = submenu("Edit")
+        for (title, selector, key) in [("Undo", "undo:", "z"), ("Redo", "redo:", "Z"), ("Cut", "cut:", "x"), ("Copy", "copy:", "c"), ("Paste", "paste:", "v"), ("Select All", "selectAll:", "a")] {
+            edit.addItem(withTitle: title, action: Selector(selector), keyEquivalent: key)
+        }
+        let windows = submenu("Window")
+        windows.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        windows.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        windows.addItem(withTitle: "Bring All to Front", action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: "")
+        NSApp.windowsMenu = windows
+        NSApp.mainMenu = bar
     }
 }
 
@@ -31,16 +56,44 @@ struct EnshroudedApp: App {
     static var isBusy: Bool { !activeOperations().isEmpty }
     static var allowTermination = false
 }
-@MainActor final class ManagerAppDelegate: NSObject, NSApplicationDelegate {
+@MainActor final class ManagerAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+    private(set) var fleet: FleetModel?
+    private(set) var managementWindow: NSWindow?
     private(set) var quitNotice: NSAlert?
     private var quitNoticeTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        start(fleet: FleetModel(), afterUpdate: ProcessInfo.processInfo.environment["ESM_RELAUNCH_FROM_PID"].flatMap(Int32.init) != nil)
         // AppKit's default quit Apple event can remain pending behind a sheet.
         // Handle the external request before the normal termination guard.
         NSAppleEventManager.shared().setEventHandler(self, andSelector: #selector(handleQuit(_:reply:)),
                                                      forEventClass: AEEventClass(kCoreEventClass),
                                                      andEventID: AEEventID(kAEQuitApplication))
+    }
+    func start(fleet: FleetModel, afterUpdate: Bool) {
+        self.fleet = fleet
+        fleet.statusMenu = StatusMenu(fleet: fleet, showManagement: { [weak self] in self?.showManagement() })
+        if !afterUpdate { showManagement() }
+    }
+    func showManagement() {
+        guard let fleet else { return }
+        if managementWindow == nil {
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 860),
+                                  styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
+            window.title = "Server Management"
+            window.identifier = NSUserInterfaceItemIdentifier("management")
+            window.isReleasedWhenClosed = false; window.delegate = self
+            window.contentView = NSHostingView(rootView: FleetView(fleet: fleet))
+            window.center()
+            managementWindow = window
+        }
+        managementWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+    func windowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window === managementWindow else { return }
+        window.contentView = nil
+        managementWindow = nil
     }
     @objc private func handleQuit(_ event: NSAppleEventDescriptor, reply: NSAppleEventDescriptor) {
         guard ApplicationLifetime.allowTermination || !ApplicationLifetime.isBusy else {

@@ -13,6 +13,33 @@ extension Engine {
         return try work()
     }
 
+    /// Do not repopulate a deliberately cleared cache from older installations.
+    public func canReuseInstallation(at home: URL) -> Bool {
+        guard let sharedDownloads else { return true }
+        let marker = sharedDownloads.deletingLastPathComponent().appendingPathComponent("downloads-reset")
+        guard FileManager.default.fileExists(atPath: marker.path) else { return true }
+        guard let data = try? Data(contentsOf: marker), let excluded = try? JSONDecoder().decode([String].self, from: data) else { return false }
+        return !excluded.contains(home.standardizedFileURL.resolvingSymlinksInPath().path)
+    }
+
+    public func clearSharedDownloads() throws {
+        guard let sharedDownloads else { return }
+        try withSharedDownloads {
+            let fm = FileManager.default
+            guard try sharedDownloads.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink != true else {
+                throw EngineError("Cannot clear a linked downloads folder")
+            }
+            let store = ProfileStore(registry: sharedDownloads.deletingLastPathComponent().appendingPathComponent("profiles.json"))
+            let oldHomes = try (store.load() + store.retainedInstallations()).map { URL(fileURLWithPath: $0.home) } + [home]
+            let excluded = oldHomes.map { $0.standardizedFileURL.resolvingSymlinksInPath().path }
+            try JSONEncoder().encode(excluded).write(to: sharedDownloads.deletingLastPathComponent().appendingPathComponent("downloads-reset"), options: .atomic)
+            // Preserve the directory: existing VMs may have it mounted.
+            for file in try fm.contentsOfDirectory(at: sharedDownloads, includingPropertiesForKeys: nil) {
+                try fm.removeItem(at: file)
+            }
+        }
+    }
+
     static func reusableServerFile(_ name: String) -> Bool {
         name == ".DepotDownloader" || name == "_CommonRedist" || name.hasSuffix(".dll") ||
             name == "enshrouded_server.exe" || name == "enshrouded_server.kfc" ||
@@ -42,7 +69,7 @@ extension Engine {
         try fm.createDirectory(at: sharedDownloads.appendingPathComponent("components"), withIntermediateDirectories: true)
         try fm.createDirectory(at: sharedDownloads.appendingPathComponent("packages/partial"), withIntermediateDirectories: true)
         let store = ProfileStore(registry: sharedDownloads.deletingLastPathComponent().appendingPathComponent("profiles.json"))
-        let sources = try store.load() + store.retainedInstallations()
+        let sources = try (store.load() + store.retainedInstallations()).filter { canReuseInstallation(at: URL(fileURLWithPath: $0.home)) }
         let image = sharedDownloads.appendingPathComponent("ubuntu.img")
         let seed = sharedDownloads.appendingPathComponent("server")
         // Import verified legacy archives without booting or stopping another VM.
