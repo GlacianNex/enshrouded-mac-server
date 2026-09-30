@@ -5,7 +5,7 @@ import EnshroudedCore
     private let fleet: FleetModel
     private let showManagement: () -> Void
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    private let menu = NSMenu()
+    let menu = NSMenu()
     private var actions: [StatusMenuAction] = []
     private var liveRows: [() -> Void] = []
     private var tracking = false

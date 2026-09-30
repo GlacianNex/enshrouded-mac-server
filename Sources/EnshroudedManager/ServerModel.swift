@@ -251,9 +251,9 @@ import EnshroudedCore
             if setup { try? engine.setupLogEngine.appendActivity(text) }
         }
     }
-    func run(_ action: String) {
+    func run(_ action: String, showProgress: Bool = true, completion: ((Bool) -> Void)? = nil) {
         let titles = ["start": "Starting…", "stop": "Saving & stopping…", "restart": "Restarting…", "update": "Updating server…", "install": "Setting up server…", "shutdown": "Shutting down…"]
-        operation(titles[action] ?? action.capitalized, action: action) { engine in
+        operation(titles[action] ?? action.capitalized, action: action, work: { engine in
             try engine.perform(action) { chunk in Task { @MainActor in
                 self.recordActivity(chunk)
                 self.serverProgress?.consume(chunk)
@@ -261,8 +261,8 @@ import EnshroudedCore
                 if chunk.hasPrefix("Backing up and updating") { self.operationTitle = "Updating server…" }
                 if chunk.hasPrefix("Starting server") { self.operationTitle = "Starting…" }
             } }
-        }
-        ServerProgressWindow.show(model: self)
+        }, completion: completion)
+        if showProgress { ServerProgressWindow.show(model: self) }
     }
     func save(_ value: ServerSettings) { operation("Save settings") { try $0.saveSettings(value) } }
     func backup(_ name: String) { operation("Create backup") { try $0.createBackup(name: name) } }
@@ -324,10 +324,9 @@ extension Model {
             let shouldResume = FileManager.default.fileExists(atPath: resume.path)
             if state == "RUNNING" && shouldResume { try? FileManager.default.removeItem(at: resume) }
             if stopped && shouldResume {
-                operation("Starting…", work: { engine in
-                    try engine.perform("start", output: { _ in })
-                    if shouldResume { try? FileManager.default.removeItem(at: resume) }
-                })
+                run("start", showProgress: false) { success in
+                    if success { try? FileManager.default.removeItem(at: resume) }
+                }
                 return
             }
         }

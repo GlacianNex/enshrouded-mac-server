@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.15 (Candidate)
+
+- Treat automatic server restarts after a manager update as ordinary startup, keeping unrelated menu actions available.
+- Preserve quiet update relaunch while recording startup output and making progress available on demand.
+- Test the actual post-update branch and native menu actions, including queued version checks and failed-restart recovery.
+
 ## 0.1.14 (Candidate)
 
 - Relaunch in the menu bar after manager updates; open Server Management only when requested.

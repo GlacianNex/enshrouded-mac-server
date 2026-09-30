@@ -410,4 +410,47 @@ final class WorkflowParityTests: XCTestCase {
         }
     }
 
+    @MainActor func testUpdateResumeKeepsIndependentMenuActionsEnabled() async throws {
+        try await withFixture { home in
+            let resume = home.appendingPathComponent("resume-after-manager-update")
+            try Data().write(to: resume)
+            let fleet = FleetModel()
+            defer { fleet.statusMenu?.invalidate(); fleet.models.forEach { $0.retire() } }
+            let starting = fleet.selected
+            // Exercise the actual post-update branch before its asynchronous work runs.
+            starting.polling = false; starting.state = "VM_STOPPED"
+            starting.afterRefresh()
+            XCTAssertTrue(starting.busy)
+            XCTAssertEqual(starting.activeAction, "start")
+            XCTAssertNotNil(starting.serverProgress)
+            XCTAssertTrue(fleet.canChangeProfiles)
+            XCTAssertTrue(starting.canRequestReleaseCheck)
+            var managementOpened = false
+            let status = StatusMenu(fleet: fleet) { managementOpened = true }
+            fleet.statusMenu = status
+            status.menuNeedsUpdate(status.menu)
+            let menu = status.menu
+            for title in ["New Server…", "Check for Manager Updates", "Open Manager at Login", "Automatically Update All Enshrouded Servers"] {
+                XCTAssertEqual(menu.item(withTitle: title)?.isEnabled, true, title)
+            }
+            let server = try XCTUnwrap(menu.items.first { $0.submenu != nil }?.submenu)
+            for title in ["Server Management…", "Show Progress…"] {
+                XCTAssertEqual(server.item(withTitle: title)?.isEnabled, true, title)
+            }
+            let manage = try XCTUnwrap(server.item(withTitle: "Server Management…"))
+            XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(manage.action), to: manage.target, from: manage))
+            XCTAssertTrue(managementOpened)
+            let check = try XCTUnwrap(menu.items.compactMap { $0.view?.subviews.first as? NSButton }.first)
+            XCTAssertTrue(check.isEnabled)
+            check.performClick(nil)
+            XCTAssertTrue(starting.releaseCheckQueued)
+            for title in ["Uninstall Server Files…", "Clear Installation Downloads…", "Quit Manager (Servers Keep Running)"] {
+                XCTAssertEqual(menu.item(withTitle: title)?.isEnabled, false, title)
+            }
+            XCTAssertFalse(NSApp.windows.contains { $0.isVisible && $0.title == "Server Progress — " + starting.name }, "Automatic resume must remain quiet")
+            try await settled(starting)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: resume.path), "A failed restart retains the retry marker")
+        }
+    }
+
 }
