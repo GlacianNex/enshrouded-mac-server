@@ -1,5 +1,13 @@
 # Verification
 
+## Candidate 0.1.12
+
+Manual-install artifact: `dist/Log-Viewer-0.1.12-260930.1543.15/Enshrouded Server Manager.app`. Developer ID signing, Apple notarization, stapling, strict signature verification, Gatekeeper, pre-distribution checks, and both ZIP extraction checks passed. No public release was created. [GitHub CI](https://github.com/GlacianNex/enshrouded-mac-server/actions/runs/36738838366) passed for source commit `baeb5e3`.
+
+- Open Update Log now uses the existing LogsView and native text pane, with filtering, readable formatting, line numbers, wrap, auto-scroll and one-second refresh. Standalone installation reads its exact log URL without constructing a server Model or FleetModel.
+- The queued-mouse-event regression now invokes the actual default button action and asserts that the built-in, resizable update-log window opens and is reused. A second regression starts with no log file, verifies the empty state, creates the file, then verifies live updates after atomic replacement and cleanup on close.
+- Full suite: 196 tests, zero failures, one opt-in network test skipped. The remaining log entry points were inspected and already use the built-in viewer; explicit folder buttons continue to open folders. Production installation and server processes were not changed.
+
 ## Candidate 0.1.11
 
 Manual-install artifact: `dist/Setup-Fixes-0.1.11-260930.1531.53/Enshrouded Server Manager.app`. Developer ID signing, Apple notarization, stapling, strict signature verification, Gatekeeper, pre-distribution checks, and both ZIP extraction checks passed. No public release was created. [GitHub CI](https://github.com/GlacianNex/enshrouded-mac-server/actions/runs/36737548811) passed for source commit `792e466`.
