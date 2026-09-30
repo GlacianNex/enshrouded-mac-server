@@ -1,5 +1,14 @@
 # Verification
 
+## Candidate 0.1.15
+
+Manual-install artifact: `dist/Startup-Menu-Fix-0.1.15-260930.1729.21/Enshrouded Server Manager.app`. Source commit: `588a6ef`. Developer ID signing, Apple notarization, stapling, strict signature verification, Gatekeeper, pre-distribution checks, and both ZIP extraction checks passed. No public release or changes to the installed application or running servers. [GitHub CI](https://github.com/GlacianNex/enshrouded-mac-server/actions/runs/36751699025) has passed script validation and unit tests; its clean application build is still running.
+
+- The post-manager-update restart branch previously called a generic operation with no action type. Fleet/menu rules treated it as maintenance, disabling New Server, automatic-update preferences and server-version requests. The new regression reproduces those disabled native menu items before the fix.
+- Automatic resume now uses the same typed start operation as manual startup, with its progress window suppressed. This preserves menu-bar-only update relaunch while recording startup output and providing Show Progress on demand. Successful startup removes the resume marker; failure retains it.
+- The regression exercises the actual resume-marker branch, native menu enablement, invoking Server Management, queuing a server-version check, operation progress, quiet launch and failed-restart marker preservation. Conflicting uninstall/cache-clear/quit actions remain disabled during startup. Existing manual-start/create-second-server coverage also passes.
+- Full local suite: 204 Swift tests, zero failures, one opt-in large-download test skipped. No production server restart or full manager replacement was performed during verification. Server deletion and cache retention behavior were not changed.
+
 ## Candidate 0.1.14
 
 Manual-install artifact: `dist/Setup-and-Menu-Fixes-0.1.14-260930.1636.58/Enshrouded Server Manager.app`. Source commit: `53385d3`. Developer ID signing, Apple notarization, stapling, strict signature verification, Gatekeeper, pre-distribution checks, and both ZIP extraction checks passed. No public release was created and Applications was not changed. [GitHub CI](https://github.com/GlacianNex/enshrouded-mac-server/actions/runs/36745502391) passed for this source commit.
