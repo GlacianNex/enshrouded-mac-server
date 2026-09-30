@@ -7,34 +7,14 @@ struct SetupView: View {
     @State private var importedWorld: URL?
     @State private var startWhenReady = true
     @State private var error: String?
-    @State private var downloadsExpanded = true
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         ScrollView { VStack(alignment: .leading, spacing: 16) {
             Text("Set Up Enshrouded").font(.title2.bold())
-            Text("Keep 30 GB free for the environment, extracted server files, and update space. This is a disk-space allowance—not the download size.").foregroundStyle(.secondary)
             if model.setupProgress == nil || (!model.busy && model.setupProgress?.failed == true) {
-                DisclosureGroup("What Will Be Downloaded", isExpanded: $downloadsExpanded) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        ForEach(SetupStep.allCases.filter { $0 != .configure && $0 != .start }, id: \.self) { step in
-                            Text("\(step.title): \(step.downloadDescription)").font(.caption)
-                        }
-                        Text("Lima VM launcher tools are already included with the app. Verified cached components are reused. Total download size varies with Valve’s current release and missing system packages.").font(.caption).foregroundStyle(.secondary)
-                    }.padding(.top, 6)
-                }
-            TextField("Server name", text: $draft.name)
-            SecureField("Player password (8+ characters)", text: $draft.password)
-            SecureField("Different admin password", text: $draft.adminPassword)
-            HStack {
-                Text(importedWorld == nil ? "Create a new Embervale world" : "Import: \(importedWorld!.lastPathComponent)")
-                Spacer(); Button("Choose Existing World…") {
-                    let panel = NSOpenPanel(); panel.title = "Choose an Enshrouded World"; panel.canChooseDirectories = true; panel.canChooseFiles = true; panel.allowsMultipleSelection = false; panel.message = "Choose a one-world folder, ZIP archive, or main save file (eight hexadecimal characters, no suffix)."
-                    if panel.runModal() == .OK { importedWorld = panel.url }
-                }
-                if importedWorld != nil { Button("Clear") { importedWorld = nil } }
-            }
-            Text("Import a one-world folder, ZIP archive, or main save file. Stop the source game or server first. Originals are copied; characters stay with their players.").font(.caption).foregroundStyle(.secondary)
-            Toggle("Start the server when setup finishes", isOn: $startWhenReady)
+                SetupDownloadInfo()
+                SetupIdentityFields(draft: $draft)
+                SetupWorldOptions(importedWorld: $importedWorld, startWhenReady: $startWhenReady)
             Text("Internet hosting uses UDP \(model.engine.hostPort). Your router must forward that port to this Mac.").font(.caption)
             }
             HStack(alignment: .top) {
@@ -67,8 +47,9 @@ struct SetupView: View {
 extension Model {
     func setup(_ settings: ServerSettings, world: URL?, start: Bool, completion: ((Bool) -> Void)? = nil) {
         guard !busy else { return }
+        setupStartsServer = start
         setupProgress = SetupProgress()
-        operation("Setting up server…", work: { engine in
+        operation("Setting up server…", preservingSetupProgress: true, work: { engine in
             try engine.perform("install") { chunk in Task { @MainActor in self.recordSetupActivity(chunk) } }
             Task { @MainActor in self.recordSetupActivity(SetupEvent(.configure, "Saving settings and preparing the world…").line) }
             try engine.saveSettings(settings)
@@ -139,5 +120,61 @@ struct SetupProgressView: View {
                 Text("Keep the manager open. Building and extracting files can take time without downloading more data.").font(.caption).foregroundStyle(.secondary)
             }
         }.padding(14).background(.background.secondary, in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+struct SetupIdentityFields: View {
+    @Binding var draft: ServerSettings
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Server Name").font(.headline)
+            SetupTextField(title: "Server name", text: $draft.name).frame(height: 26)
+            Text("Player Password").font(.headline)
+            SetupTextField(title: "At least 8 characters", text: $draft.password, secure: true).frame(height: 26)
+            Text("Admin Password").font(.headline)
+            SetupTextField(title: "At least 8 characters; different from player password", text: $draft.adminPassword, secure: true).frame(height: 26)
+        }
+    }
+}
+
+struct SetupWorldOptions: View {
+    @Binding var importedWorld: URL?
+    @Binding var startWhenReady: Bool
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("World").font(.headline)
+            HStack {
+                Text(importedWorld.map { "Import: " + $0.lastPathComponent } ?? "Create a new Embervale world")
+                Spacer()
+                Button("Choose Existing World…") {
+                    let panel = NSOpenPanel()
+                    panel.title = "Choose an Enshrouded World"
+                    panel.canChooseDirectories = true; panel.canChooseFiles = true
+                    panel.allowsMultipleSelection = false
+                    panel.message = "Choose a one-world folder, ZIP archive, or main save file (eight hexadecimal characters, no suffix)."
+                    if panel.runModal() == .OK { importedWorld = panel.url }
+                }
+                if importedWorld != nil { Button("Clear") { importedWorld = nil } }
+            }
+            Text("Import a one-world folder, ZIP, or main save file. Stop the source game or server first. Originals are copied; characters stay with their players.").font(.caption).foregroundStyle(.secondary)
+            Toggle("Start the server when setup finishes", isOn: $startWhenReady)
+        }
+    }
+}
+
+struct SetupDownloadInfo: View {
+    @State private var expanded = false
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Allow 8 GB of RAM and 30 GB of free disk space per server. Downloads and saved data stay outside the manager app.").font(.callout).foregroundStyle(.secondary)
+            DisclosureGroup("What Will Be Downloaded", isExpanded: $expanded) {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(SetupStep.allCases.filter { $0 != .configure && $0 != .start }, id: \.self) { step in
+                        Text("\(step.title): \(step.downloadDescription)").font(.caption)
+                    }
+                    Text("Lima tools are included. Cached downloads are reused. Download size varies with the latest server release and required packages; 30 GB includes extraction and update space.").font(.caption).foregroundStyle(.secondary)
+                }.padding(.top, 6)
+            }
+        }
     }
 }

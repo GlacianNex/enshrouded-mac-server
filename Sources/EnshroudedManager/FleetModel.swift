@@ -92,7 +92,13 @@ import EnshroudedCore
         } catch { self.error = "Could not change manager login startup: " + error.localizedDescription }
     }
     var canChangeProfiles: Bool { !models.contains { $0.busy && $0.activeAction != "stop" } }
-    func create(settings: ServerSettings, port: Int) throws {
+    func createAndSetUp(settings: ServerSettings, port: Int, world: URL?, start: Bool) throws -> Model {
+        let model = try create(settings: settings, port: port)
+        model.setup(settings, world: world, start: start)
+        return model
+    }
+    @discardableResult
+    func create(settings: ServerSettings, port: Int) throws -> Model {
         guard canChangeProfiles else { throw EngineError("Wait for server maintenance to finish before creating a server") }
         _ = try settings.applying(to: [:])
         var profiles = try store.load()
@@ -112,6 +118,7 @@ import EnshroudedCore
         for placeholder in models where !profiles.contains(where: { $0.home == placeholder.engine.home.path }) { placeholder.retire() }
         models.removeAll { model in !profiles.contains { $0.home == model.engine.home.path } }
         let model = Model(homeOverride: root, sharedDownloads: sharedDownloads); models.append(model); selectedID = root.path; observe()
+        return model
     }
 }
 struct FleetView: View {
@@ -138,48 +145,66 @@ struct NewServerView: View {
     let fleet: FleetModel
     @State private var draft = ServerSettings()
     @State private var port = "15637"
+    @State private var importedWorld: URL?
+    @State private var startWhenReady = true
     @State private var error: String?
-    @FocusState private var focused: Field?
-    private enum Field: Hashable { case name, player, admin, port }
+    @State private var created: Model?
     var close: () -> Void
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text("New Enshrouded Server").font(.title2.bold())
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Server Name").font(.headline)
-                TextField("Server name", text: $draft.name).focused($focused, equals: .name)
-            }
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Player Password").font(.headline)
-                SecureField("At least 8 characters", text: $draft.password).focused($focused, equals: .player)
-            }
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Admin Password").font(.headline)
-                SecureField("At least 8 characters; different from player password", text: $draft.adminPassword).focused($focused, equals: .admin)
-            }
-            VStack(alignment: .leading, spacing: 6) {
-                Text("UDP Port").font(.headline)
-                TextField("UDP port", text: $port).focused($focused, equals: .port)
-            }
-            Text("Each server needs 8 GB of RAM, 30 GB of free disk space, and its own forwarded UDP port.").font(.callout).foregroundStyle(.secondary)
-            if let error { Text(error).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true) }
-            HStack {
-                Button("Cancel") { close() }.keyboardShortcut(.cancelAction)
-                Spacer()
-                Button("Create Server") {
-                    do {
-                        guard let number = Int(port.trimmingCharacters(in: .whitespacesAndNewlines)) else { throw EngineError("Enter a UDP port from 1024–65535.") }
-                        try fleet.create(settings: draft, port: number)
-                        close()
-                        fleet.statusMenu?.openSelectedManagement()
-                    } catch { self.error = error.localizedDescription }
-                }.keyboardShortcut(.defaultAction)
-            }
-        }.textFieldStyle(.roundedBorder).controlSize(.large)
-        .padding(24).frame(width: 500)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                if let created {
+                    NewServerInstallationView(model: created, settings: draft, world: importedWorld, start: startWhenReady, close: close)
+                } else {
+                    Text("New Enshrouded Server").font(.title2.bold())
+                    SetupIdentityFields(draft: $draft)
+                    Text("UDP Port").font(.headline)
+                    SetupTextField(title: "UDP port", text: $port).frame(height: 26)
+                    Text("Forward this UDP port to this Mac for Internet play. Each server needs its own port.").font(.caption).foregroundStyle(.secondary)
+                    SetupWorldOptions(importedWorld: $importedWorld, startWhenReady: $startWhenReady)
+                    SetupDownloadInfo()
+                    if let error { Text(error).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true) }
+                    HStack {
+                        Button("Cancel") { close() }.keyboardShortcut(.cancelAction)
+                        Spacer()
+                        Button("Create & Set Up") {
+                            guard created == nil else { return }
+                            do {
+                                guard let number = Int(port.trimmingCharacters(in: .whitespacesAndNewlines)) else { throw EngineError("Enter a UDP port from 1024–65535.") }
+                                created = try fleet.createAndSetUp(settings: draft, port: number, world: importedWorld, start: startWhenReady)
+                            } catch { self.error = error.localizedDescription }
+                        }.keyboardShortcut(.defaultAction)
+                    }
+                }
+            }.padding(24)
+        }.frame(minWidth: 550, minHeight: 700)
         .onAppear {
-            port = String((15637...65535).first { candidate in !fleet.configuredModels.contains { Int($0.engine.hostPort) == candidate } } ?? 15637)
-            focused = .name
+            let usedPorts = Set(fleet.configuredModels.map { Int($0.engine.hostPort) })
+            port = String((15637...65535).first { !usedPorts.contains($0) } ?? 15637)
+        }
+    }
+}
+
+private struct NewServerInstallationView: View {
+    @ObservedObject var model: Model
+    let settings: ServerSettings
+    let world: URL?
+    let start: Bool
+    let close: () -> Void
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(settings.name).font(.title2.bold())
+            if let progress = model.setupProgress { SetupProgressView(progress: progress, startsServer: start) }
+            if let error = model.error { Text(error).foregroundStyle(.orange).textSelection(.enabled) }
+            Text("You can close this window. Setup continues in the menu bar.").font(.caption).foregroundStyle(.secondary)
+            HStack {
+                Button("Open Logs") { LogsWindowController.show(model: model) }
+                Spacer()
+                if !model.busy && model.setupProgress?.failed == true {
+                    Button("Retry Setup") { model.setup(settings, world: world, start: start) }
+                }
+                Button(model.busy ? "Close" : "Done") { close() }
+            }
         }
     }
 }

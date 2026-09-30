@@ -157,7 +157,7 @@ import EnshroudedCore
             }
             addLive(to: submenu, title: { "Delete Server…" }, enabled: { [weak self] in self?.fleet.canChangeProfiles == true && !server.busy }) { self.fleet.deleteServer(server) }
             add("Server Management…", to: submenu) { self.open(server) }
-            addLive(to: submenu, title: { "Show Progress…" }, enabled: { server.busy || server.serverProgress != nil }) { ServerProgressWindow.show(model: server) }
+            addLive(to: submenu, title: { "Show Progress…" }, enabled: { server.busy || server.serverProgress != nil || server.setupProgress != nil }) { ServerProgressWindow.show(model: server) }
         }
         menu.addItem(.separator())
         add("Enshrouded Server Build \(fleet.selected.engine.installedManifest ?? "Unavailable")", to: menu)

@@ -1,5 +1,14 @@
 # Verification
 
+## Candidate 0.1.10
+
+- New Server now collects identity, UDP port, world selection and startup preference once. Create & Set Up creates one profile and immediately starts setup, with progress and retry in the same window.
+- Native AppKit fields replace SwiftUI focus-state fields. Forty rapid field-editor switches and text replacements complete in under one second in the regression test; active text and selection survive a model refresh.
+- Isolated native UI checks passed for rapid clicks across all four inputs, name typing, Tab navigation, invalid-form validation without losing the draft, opening/cancelling the world picker, download-detail expansion, scrolling and cancellation.
+- Integration tests cover immediate setup dispatch, invalid port rejection before profile creation, failed setup retry without duplicate profiles, and clearing old setup progress before a different operation.
+- All 187 Swift tests pass (177 core, 10 manager). The production app and server were not replaced or restarted. No fresh full server download or second-Mac test was performed for this UI change.
+- The original intermittent 1–2 second delay was not conclusively attributed by stack sampling; the replacement native controls passed the focus checks above.
+
 ## Candidate 0.1.9
 
 See the [dated behavior audit](VALHEIM-PARITY-AUDIT-2026-09-30.md) and [implementation/evidence record](PARITY-IMPLEMENTATION-PLAN.md) for the complete comparison, corrections, current test counts and verification limits. This candidate is delivered for manual installation; it is not a public GitHub release.

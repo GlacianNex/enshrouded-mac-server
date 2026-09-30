@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.10 (Candidate)
+
+- Combine new-server identity, port, world import and startup choices into one form. Create & Set Up starts installation directly and shows progress in the same window.
+- Use native AppKit name/password/port fields, preserving active editing and selection during view updates.
+- Retry failed setup on the same profile and reopen setup progress from the menu bar.
+
 ## 0.1.9 (Candidate)
 
 - Keep hosting and pending operations alive when management or progress windows close. Settings and New Server use independent windows with retained drafts.

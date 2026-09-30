@@ -6,7 +6,7 @@ import SwiftUI
     private let key: String
     static func close(_ model: Model) { windows[model.engine.home.path]?.window?.performClose(nil) }
     static func show(model: Model) {
-        guard model.serverProgress != nil else { LogsWindowController.show(model: model); return }
+        guard model.serverProgress != nil || model.setupProgress != nil else { LogsWindowController.show(model: model); return }
         let key = model.engine.home.path
         let controller = windows[key] ?? ServerProgressWindow(model: model)
         windows[key] = controller
@@ -15,7 +15,7 @@ import SwiftUI
     }
     private init(model: Model) {
         key = model.engine.home.path
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 250), styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: model.setupProgress != nil ? 600 : 250), styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
         super.init(window: window)
         window.title = "Server Progress — " + model.name
         window.isReleasedWhenClosed = false; window.delegate = self; window.center()
@@ -28,7 +28,11 @@ private struct ServerProgressView: View {
     @ObservedObject var model: Model
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            if let progress = model.serverProgress {
+            if let progress = model.setupProgress {
+                SetupProgressView(progress: progress, startsServer: model.setupStartsServer)
+                if let error = model.error { Text(error).foregroundStyle(.orange).textSelection(.enabled) }
+                Button("Open Logs") { LogsWindowController.show(model: model) }
+            } else if let progress = model.serverProgress {
                 Text(progress.title).font(.title2.bold())
                 Text(progress.message).fixedSize(horizontal: false, vertical: true)
                 if let detail = progress.downloadDetail { Text(detail).font(.caption).foregroundStyle(.secondary) }

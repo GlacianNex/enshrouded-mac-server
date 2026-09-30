@@ -5,6 +5,7 @@ import ServiceManagement
 import EnshroudedCore
 
 @MainActor final class Model: ObservableObject {
+    var setupStartsServer = true
     @Published var setupProgress: SetupProgress?
     @Published var serverProgress: ServerOperationProgress?
     private var telemetryPolling = false
@@ -203,9 +204,10 @@ import EnshroudedCore
             else { try Data().write(to: marker, options: .atomic) }
         } catch { self.error = "Could not save sleep protection: " + error.localizedDescription }
     }
-    func operation(_ title: String, action: String? = nil, work: @escaping (Engine) throws -> Void, completion: ((Bool) -> Void)? = nil) {
+    func operation(_ title: String, action: String? = nil, preservingSetupProgress: Bool = false, work: @escaping (Engine) throws -> Void, completion: ((Bool) -> Void)? = nil) {
         guard !busy else { completion?(false); return }
         activeAction = action
+        if !preservingSetupProgress { setupProgress = nil }
         serverProgress = action.map { ServerOperationProgress(action: $0) }
         busy = true; operationTitle = (polling || checkingRelease) ? "Waiting for status check…" : title; error = nil; recordActivity("\n\(title)…\n")
         let engine = engine

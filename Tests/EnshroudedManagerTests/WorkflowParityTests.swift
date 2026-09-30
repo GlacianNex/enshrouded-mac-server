@@ -1,5 +1,6 @@
 import XCTest
 import AppKit
+import SwiftUI
 import Darwin
 import EnshroudedCore
 @testable import EnshroudedManager
@@ -168,6 +169,76 @@ final class WorkflowParityTests: XCTestCase {
             XCTAssertNil(model.automation.lastAutomaticManifest)
             try await Task.sleep(for: .milliseconds(80))
             XCTAssertEqual(try String(contentsOf: home.appendingPathComponent("commands")), before)
+        }
+    }
+
+    @MainActor func testCombinedCreationStartsSetupAndFailureKeepsSingleProfile() async throws {
+        try await withFixture { _ in
+            let fleet = FleetModel()
+            defer { fleet.models.forEach { $0.retire() } }
+            for model in fleet.models { try await settled(model) }
+            var settings = ServerSettings()
+            settings.name = "Combined Setup Test"
+            settings.password = "test-player-only"
+            settings.adminPassword = "test-admin-only"
+            let before = try fleet.store.load().count
+            XCTAssertThrowsError(try fleet.createAndSetUp(settings: settings, port: 1, world: nil, start: false))
+            XCTAssertEqual(try fleet.store.load().count, before)
+            let model = try fleet.createAndSetUp(settings: settings, port: 45679, world: nil, start: false)
+            XCTAssertTrue(model.busy, "Creation must start installation without another form or click")
+            XCTAssertNotNil(model.setupProgress)
+            XCTAssertFalse(model.setupStartsServer)
+            XCTAssertEqual(try fleet.store.load().count, before + 1)
+            XCTAssertEqual(model.engine.hostPort, 45679)
+            XCTAssertEqual(model.settings.name, settings.name)
+            try await settled(model)
+            XCTAssertEqual(model.setupProgress?.failed, true, "Fake installer deliberately fails; the same profile must remain retryable")
+            model.setup(settings, world: nil, start: false)
+            try await settled(model)
+            XCTAssertEqual(try fleet.store.load().count, before + 1)
+            model.operation("Different operation", work: { _ in })
+            XCTAssertNil(model.setupProgress, "A later operation must not display stale setup progress")
+            try await settled(model)
+        }
+    }
+
+    @MainActor func testCombinedFormNativeFieldsRetainInputAndSelectionDuringRefresh() async throws {
+        try await withFixture { _ in
+            let fleet = FleetModel()
+            defer { fleet.models.forEach { $0.retire() } }
+            for model in fleet.models { try await settled(model) }
+            EditorWindows.showNew(fleet)
+            let window = try XCTUnwrap(NSApp.windows.first { $0.isVisible && $0.title == "New Enshrouded Server" })
+            defer { window.close() }
+            try await Task.sleep(for: .milliseconds(100))
+            @MainActor func fields(_ view: NSView) -> [NSTextField] {
+                (view as? NSTextField).map { $0.isEditable ? [$0] : [] } ?? view.subviews.flatMap(fields)
+            }
+            let inputs = fields(try XCTUnwrap(window.contentView))
+            XCTAssertEqual(inputs.count, 4, "One combined form must provide name, two passwords and UDP port")
+            XCTAssertEqual(inputs.filter { $0 is NSSecureTextField }.count, 2)
+            let started = Date()
+            for index in 0..<40 {
+                let input = inputs[index % inputs.count]
+                XCTAssertTrue(window.makeFirstResponder(input))
+                let editor = try XCTUnwrap(input.currentEditor() as? NSTextView)
+                editor.selectAll(nil)
+                editor.insertText("fixture-\(index)", replacementRange: editor.selectedRange())
+                XCTAssertEqual(input.stringValue, "fixture-\(index)")
+            }
+            XCTAssertLessThan(Date().timeIntervalSince(started), 1, "Rapid native focus changes must not wait 1–2 seconds per field")
+            let name = try XCTUnwrap(inputs.first { $0.placeholderString == "Server name" })
+            XCTAssertTrue(window.makeFirstResponder(name))
+            let editor = try XCTUnwrap(name.currentEditor() as? NSTextView)
+            editor.setSelectedRange(NSRange(location: 2, length: 2))
+            let text = name.stringValue
+            fleet.selected.objectWillChange.send()
+            try await Task.sleep(for: .milliseconds(100))
+            XCTAssertEqual(name.stringValue, text)
+            XCTAssertTrue(name.currentEditor() === editor)
+            XCTAssertEqual(editor.selectedRange(), NSRange(location: 2, length: 2))
+            XCTAssertTrue(window.makeFirstResponder(inputs[1]))
+            XCTAssertEqual(name.stringValue, text)
         }
     }
 

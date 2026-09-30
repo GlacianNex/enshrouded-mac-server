@@ -12,7 +12,7 @@ import SwiftUI
         }
     }
     static func showNew(_ fleet: FleetModel) {
-        show(key: "new:" + fleet.store.registry.path, title: "New Enshrouded Server", size: NSSize(width: 550, height: 560)) { close in
+        show(key: "new:" + fleet.store.registry.path, title: "New Enshrouded Server", size: NSSize(width: 600, height: 740)) { close in
             AnyView(NewServerView(fleet: fleet, close: close))
         }
     }
