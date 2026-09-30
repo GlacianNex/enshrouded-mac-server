@@ -2,7 +2,7 @@
 
 ## Candidate 0.1.15
 
-Manual-install artifact: `dist/Startup-Menu-Fix-0.1.15-260930.1729.21/Enshrouded Server Manager.app`. Source commit: `588a6ef`. Developer ID signing, Apple notarization, stapling, strict signature verification, Gatekeeper, pre-distribution checks, and both ZIP extraction checks passed. No public release or changes to the installed application or running servers. [GitHub CI](https://github.com/GlacianNex/enshrouded-mac-server/actions/runs/36751699025) has passed script validation and unit tests; its clean application build is still running.
+Manual-install artifact: `dist/Startup-Menu-Fix-0.1.15-260930.1729.21/Enshrouded Server Manager.app`. Source commit: `588a6ef`. Developer ID signing, Apple notarization, stapling, strict signature verification, Gatekeeper, pre-distribution checks, and both ZIP extraction checks passed. No public release or changes to the installed application or running servers. [GitHub CI](https://github.com/GlacianNex/enshrouded-mac-server/actions/runs/36751699025) passed script validation, unit tests, the clean Apple Silicon build and artifact upload.
 
 - The post-manager-update restart branch previously called a generic operation with no action type. Fleet/menu rules treated it as maintenance, disabling New Server, automatic-update preferences and server-version requests. The new regression reproduces those disabled native menu items before the fix.
 - Automatic resume now uses the same typed start operation as manual startup, with its progress window suppressed. This preserves menu-bar-only update relaunch while recording startup output and providing Show Progress on demand. Successful startup removes the resume marker; failure retains it.
