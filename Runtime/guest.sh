@@ -39,10 +39,9 @@ prepare() {
   stage box64 'Downloading processor compatibility tools…'
   fetch https://github.com/ptitSeb/box64/archive/refs/tags/v0.4.4.tar.gz 99c6de4f509e46ab1de15df740d0e0ea338a7790efa3f67510dfbb975cc24029 "$ROOT/cache/box64.tar.gz" box64
   tar -xzf "$ROOT/cache/box64.tar.gz" -C "$ROOT"
-  stage box64 'Building processor compatibility tools; no download during this step…'
-  cmake -S "$ROOT/box64-0.4.4" -B "$ROOT/box64-build" -DARM_DYNAREC=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
-  cmake --build "$ROOT/box64-build" -j4
-  sudo cmake --install "$ROOT/box64-build"
+  python3 "$RUNTIME_DIR/build-progress.py" configure cmake -S "$ROOT/box64-0.4.4" -B "$ROOT/box64-build" -DARM_DYNAREC=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
+  python3 "$RUNTIME_DIR/build-progress.py" build cmake --build "$ROOT/box64-build" -j4
+  python3 "$RUNTIME_DIR/build-progress.py" install sudo cmake --install "$ROOT/box64-build"
   sudo systemctl restart systemd-binfmt
   stage wine 'Downloading Windows compatibility tools…'
   fetch https://github.com/Kron4ek/Wine-Builds/releases/download/11.18/wine-11.18-amd64-wow64.tar.xz f899879b8c37e0b20adca19d147cf77436f3f1a37bf16d08d27fa7137a52b9ba "$ROOT/cache/wine.tar.xz" wine

@@ -10,7 +10,7 @@ final class ServerDeletionTests: XCTestCase {
         for path in ["Bundle/Lima/bin", "Bundle/Runtime", "first/lima/engine", "first/data/server/savegame", "first/cache", "second"] {
             try FileManager.default.createDirectory(at: root.appendingPathComponent(path), withIntermediateDirectories: true)
         }
-        for name in ["guest.sh", "stop-server.py", "download.py"] { try Data().write(to: engine.resources.appendingPathComponent("Runtime/" + name)) }
+        for name in ["guest.sh", "stop-server.py", "download.py", "build-progress.py"] { try Data().write(to: engine.resources.appendingPathComponent("Runtime/" + name)) }
         for path in ["lima/engine/lima.yaml", "data/server/enshrouded_server.exe", "cache/ubuntu.img"] {
             try Data("reusable".utf8).write(to: home.appendingPathComponent(path))
         }

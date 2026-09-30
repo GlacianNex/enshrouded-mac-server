@@ -121,10 +121,16 @@ struct SetupProgressView: View {
                 if !progress.failed {
                     if let percent = progress.percent {
                         ProgressView(value: percent, total: 100)
-                        Text("Current step: \(Int(percent))%").font(.caption).monospacedDigit()
+                        Text(progress.percentLabel).font(.caption).monospacedDigit()
                     } else { ProgressView().progressViewStyle(.linear) }
                 }
-                if !progress.failed && ![SetupStep.configure, .start].contains(progress.step) {
+                if !progress.failed && progress.phase != nil {
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        Text(progress.processStatus(at: context.date) ?? "Waiting for process status…")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                if !progress.failed && progress.phase == nil && ![SetupStep.configure, .start].contains(progress.step) {
                     Text(progress.downloadDetail).font(.caption).foregroundStyle(.secondary)
                 }
                 if !progress.failed {

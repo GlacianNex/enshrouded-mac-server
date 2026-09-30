@@ -35,6 +35,12 @@ public struct SetupEvent: Codable {
     public var message: String
     public var received: Int64?
     public var total: Int64?
+    public var phase: String?
+    public var percent: Double?
+    public var elapsedSeconds: Int?
+    public var outputAgeSeconds: Int?
+    public var cpuActive: Bool?
+    public var running: Bool?
     public init(_ stage: SetupStep, _ message: String, received: Int64? = nil, total: Int64? = nil) {
         self.stage = stage; self.message = message; self.received = received; self.total = total
     }
@@ -51,28 +57,44 @@ public struct SetupProgress {
     public private(set) var finished = false
     public private(set) var failed = false
     public private(set) var started = Date()
+    public private(set) var phase: String?
+    public private(set) var processHeartbeat: Date?
+    public private(set) var phaseElapsed = 0
+    public private(set) var outputAge = 0
+    public private(set) var cpuActive: Bool?
+    public private(set) var processRunning: Bool?
     private var pending = ""
     public init() {}
     public mutating func finish(success: Bool) {
         finished = success; failed = !success
         message = success ? "Setup complete." : "Setup stopped during \(step.title). Check the error below, then retry."
     }
-    public mutating func consume(_ chunk: String) {
+    public mutating func consume(_ chunk: String, at now: Date = Date()) {
         pending += chunk.replacingOccurrences(of: "\r", with: "\n")
         while let end = pending.firstIndex(of: "\n") {
             let line = String(pending[..<end]); pending.removeSubrange(...end)
-            parse(line)
+            parse(line, at: now)
         }
         if pending.count > 16_384 { pending = String(pending.suffix(16_384)) }
     }
-    private mutating func parse(_ raw: String) {
+    private mutating func parse(_ raw: String, at now: Date) {
         if let range = raw.range(of: "[ESM_SETUP] "),
            let event = try? JSONDecoder().decode(SetupEvent.self, from: Data(raw[range.upperBound...].utf8)) {
-            if event.stage != step { received = nil; total = nil; percent = nil }
+            if event.stage != step || event.phase != phase {
+                received = nil; total = nil; percent = nil
+                phase = event.phase; processHeartbeat = nil; processRunning = nil
+                phaseElapsed = 0; outputAge = 0; cpuActive = nil
+            }
             step = event.stage; message = event.message
             if let n = event.received, n >= 0 { received = n; downloaded[step] = n }
             if let n = event.total, n > 0 { total = n }
-            if event.received == nil { percent = nil }
+            if event.phase != nil {
+                processHeartbeat = now
+                phaseElapsed = max(0, event.elapsedSeconds ?? 0)
+                outputAge = max(0, event.outputAgeSeconds ?? 0)
+                cpuActive = event.cpuActive; processRunning = event.running
+                if let value = event.percent, value.isFinite, (0...100).contains(value) { percent = max(percent ?? 0, value) }
+            } else if event.received == nil { percent = nil }
             else if let n = received, let t = total { percent = min(100, Double(n) / Double(t) * 100) }
             return
         }
@@ -96,6 +118,17 @@ public struct SetupProgress {
             if n.isFinite, n >= 0, n * multiplier < Double(Int64.max) { received = (received ?? 0) + Int64(n * multiplier); downloaded[step] = received }
             message = "Installing system packages…"
         }
+    }
+    public func processStatus(at now: Date) -> String? {
+        guard phase != nil, let processHeartbeat else { return nil }
+        let age = max(0, Int(now.timeIntervalSince(processHeartbeat)))
+        if age >= 15 { return "No status update for \(age)s. Open Logs for details." }
+        if processRunning == false { return "Process finished; waiting for the next setup step…" }
+        let activity = cpuActive == true ? "CPU activity detected" : cpuActive == false ? "No recent CPU activity" : "Process running"
+        return "\(activity) · Last output \(outputAge + age)s ago · Step elapsed \(phaseElapsed + age)s"
+    }
+    public var percentLabel: String {
+        phase == "build" ? "Compilation: \(Int(percent ?? 0))% of build steps" : "Current step: \(Int(percent ?? 0))%"
     }
     public var downloadDetail: String {
         let format: (Int64) -> String = { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) }

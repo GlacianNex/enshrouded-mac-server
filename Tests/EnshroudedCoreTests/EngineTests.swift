@@ -30,7 +30,7 @@ final class EngineTests: XCTestCase {
         for path in ["Lima/bin", "lima/engine", "data/server", "Runtime"] {
             try FileManager.default.createDirectory(at: root.appendingPathComponent(path), withIntermediateDirectories: true)
         }
-        for name in ["guest.sh", "stop-server.py", "download.py"] { try Data("fixture".utf8).write(to: root.appendingPathComponent("Runtime/" + name)) }
+        for name in ["guest.sh", "stop-server.py", "download.py", "build-progress.py"] { try Data("fixture".utf8).write(to: root.appendingPathComponent("Runtime/" + name)) }
         for path in ["lima/engine/lima.yaml", "internet-forward-v1", "data/server/enshrouded_server.exe"] {
             try Data().write(to: root.appendingPathComponent(path))
         }

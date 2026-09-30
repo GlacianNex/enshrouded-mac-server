@@ -142,7 +142,7 @@ public struct Engine {
     func syncRuntimeHelpers() throws {
         let files = FileManager.default
         let runtime = home.appendingPathComponent("runtime")
-        let helpers = try ["guest.sh", "stop-server.py", "download.py"].map { name in
+        let helpers = try ["guest.sh", "stop-server.py", "download.py", "build-progress.py"].map { name in
             (name, try Data(contentsOf: resources.appendingPathComponent("Runtime/" + name)))
         }
         var digest = SHA256()

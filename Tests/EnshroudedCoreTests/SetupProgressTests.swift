@@ -55,4 +55,37 @@ final class SetupProgressTests: XCTestCase {
         XCTAssertTrue(output.contains("verified environment download"))
         XCTAssertEqual(try String(contentsOf: file), "known")
     }
+    func testBuildPercentHeartbeatAndStaleStatusAreDistinctFromDownloads() {
+        var progress = SetupProgress()
+        let now = Date(timeIntervalSince1970: 1000)
+        progress.consume(SetupEvent(.box64, "Downloading", received: 100, total: 100).line, at: now)
+        progress.consume("[ESM_SETUP] {\"stage\":\"box64\",\"phase\":\"build\",\"message\":\"Compiling…\",\"percent\":42,\"running\":true,\"elapsedSeconds\":30,\"outputAgeSeconds\":2,\"cpuActive\":true}\n", at: now)
+        XCTAssertEqual(progress.percent, 42)
+        XCTAssertNil(progress.received)
+        XCTAssertEqual(progress.downloaded[.box64], 100)
+        XCTAssertEqual(progress.percentLabel, "Compilation: 42% of build steps")
+        XCTAssertEqual(progress.processStatus(at: now.addingTimeInterval(3)), "CPU activity detected · Last output 5s ago · Step elapsed 33s")
+        XCTAssertEqual(progress.processStatus(at: now.addingTimeInterval(20)), "No status update for 20s. Open Logs for details.")
+        progress.consume("[ESM_SETUP] {\"stage\":\"box64\",\"phase\":\"build\",\"message\":\"Compiling…\",\"running\":true,\"elapsedSeconds\":35,\"outputAgeSeconds\":7,\"cpuActive\":false}\n", at: now.addingTimeInterval(5))
+        XCTAssertEqual(progress.percent, 42, "Quiet heartbeat must retain the actual build percentage")
+        XCTAssertTrue(progress.processStatus(at: now.addingTimeInterval(5))!.contains("No recent CPU activity"))
+    }
+    func testBuildSubstepsResetPercentageAndDoNotInventCompletion() {
+        var progress = SetupProgress()
+        progress.consume("[ESM_SETUP] {\"stage\":\"box64\",\"phase\":\"build\",\"message\":\"Compiling…\",\"percent\":57,\"running\":true}\n")
+        progress.consume("[ESM_SETUP] {\"stage\":\"box64\",\"phase\":\"build\",\"message\":\"Compiling…\",\"percent\":101,\"running\":false}\n")
+        XCTAssertEqual(progress.percent, 57)
+        progress.finish(success: false)
+        XCTAssertEqual(progress.percent, 57)
+        XCTAssertTrue(progress.failed)
+        var next = SetupProgress()
+        next.consume("[ESM_SETUP] {\"stage\":\"box64\",\"phase\":\"build\",\"message\":\"Compiling…\",\"percent\":100}\n")
+        next.consume("[ESM_SETUP] {\"stage\":\"box64\",\"phase\":\"install\",\"message\":\"Installing…\",\"running\":true}\n")
+        XCTAssertNil(next.percent)
+        XCTAssertEqual(next.phase, "install")
+        next.consume(SetupEvent(.wine, "Downloading").line)
+        XCTAssertNil(next.phase)
+        XCTAssertNil(next.processStatus(at: Date()))
+    }
+
 }

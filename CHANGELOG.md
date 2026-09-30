@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.13 (Candidate)
+
+- Show actual compiler build-step percentages during processor compatibility setup, with separate configuring, compiling and installing phases.
+- Report process liveness, CPU activity, elapsed time and last-output age every five seconds; flag missing status updates without inventing progress.
+- Preserve compiler failures and exit codes, and distinguish compilation progress from downloaded bytes.
+- Add Swift progress-state regressions and offline Python process-monitor tests to CI.
+
 ## 0.1.12 (Candidate)
 
 - Open update logs in the built-in viewer, including during standalone installation, with filtering, readable formatting, line numbers, wrapping and live refresh.

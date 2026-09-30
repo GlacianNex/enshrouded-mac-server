@@ -52,7 +52,7 @@ final class ManagerTests: XCTestCase {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let engine = Engine(home: root, resources: root)
         for path in ["Lima/bin", "lima/engine", "data/server/savegame", "Runtime"] { try FileManager.default.createDirectory(at: root.appendingPathComponent(path), withIntermediateDirectories: true) }
-        for name in ["guest.sh", "stop-server.py", "download.py"] { try Data("fixture".utf8).write(to: root.appendingPathComponent("Runtime/" + name)) }
+        for name in ["guest.sh", "stop-server.py", "download.py", "build-progress.py"] { try Data("fixture".utf8).write(to: root.appendingPathComponent("Runtime/" + name)) }
         try Data().write(to: root.appendingPathComponent("lima/engine/lima.yaml"))
         try "#!/bin/sh\necho Stopped\n".write(to: engine.lima, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: engine.lima.path)

@@ -7,7 +7,7 @@ final class ServerUninstallTests: XCTestCase {
         for path in ["Bundle/Runtime", "Bundle/Lima/bin", "lima/engine", "data/server/savegame", "data/previous-install/savegame", "data/backups", "cache"] {
             try FileManager.default.createDirectory(at: root.appendingPathComponent(path), withIntermediateDirectories: true)
         }
-        for file in ["guest.sh", "stop-server.py", "download.py"] { try Data().write(to: root.appendingPathComponent("Bundle/Runtime/" + file)) }
+        for file in ["guest.sh", "stop-server.py", "download.py", "build-progress.py"] { try Data().write(to: root.appendingPathComponent("Bundle/Runtime/" + file)) }
         for file in ["lima/engine/lima.yaml", "cache/ubuntu.img", "data/server/enshrouded_server.exe", "data/previous-install/old.exe"] {
             try Data("binary".utf8).write(to: root.appendingPathComponent(file))
         }
