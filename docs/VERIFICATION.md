@@ -1,5 +1,15 @@
 # Verification
 
+## Candidate 0.1.14
+
+Manual-install artifact: `dist/Setup-and-Menu-Fixes-0.1.14-260930.1636.58/Enshrouded Server Manager.app`. Source commit: `53385d3`. Developer ID signing, Apple notarization, stapling, strict signature verification, Gatekeeper, pre-distribution checks, and both ZIP extraction checks passed. No public release was created and Applications was not changed. [GitHub CI](https://github.com/GlacianNex/enshrouded-mac-server/actions/runs/36745502391) passed for this source commit.
+
+- Update relaunch uses the existing predecessor-PID flag to start with only the menu bar. The delegate retains the fleet and creates management on demand. A native AppKit application lifetime avoids SwiftUI creating a management or empty Settings window implicitly. Normal launch still opens management.
+- Regression tests verify menu creation without management, explicit menu opening/reuse, close without termination, and normal launch. An isolated app launch with the update flag stayed running with no windows; ordinary launch opened management. Native settings editing and Command-A worked, and closing management left the app running. Production app and servers were not changed.
+- Setup writes a separate bounded installation log, including command output and failures. Open Logs selects Installation during setup and switches an already-open game-log viewer. Live refresh and retry reset are tested. Server logs and this server's manager activity remain separate; unrelated manager-installer history is no longer appended.
+- Clear Installation Downloads holds the shared-download lock, preserves the mounted folder, clears its contents, and records existing installations that must not refill the cache. New server creation bypasses those retained environments. Subsequent fresh installations and their downloads remain reusable. Tests cover lock contention, preservation of installed binaries, absence of donor reseeding, publishing new reusable downloads, and fresh-profile creation.
+- Full local suite: 203 Swift tests, zero failures, one opt-in large-download test skipped; eight offline Python tests passed. A full multi-gigabyte install was not repeated, and the user's cache was not cleared.
+
 ## Candidate 0.1.13
 
 Manual-install artifact: `dist/Install-Progress-0.1.13-260930.1556.03/Enshrouded Server Manager.app`. Developer ID signing, Apple notarization, stapling, strict signature verification, Gatekeeper, pre-distribution checks, and both ZIP extraction checks passed. No public release was created. [GitHub CI](https://github.com/GlacianNex/enshrouded-mac-server/actions/runs/36740619633) passed for source commit `9031cbf`.
