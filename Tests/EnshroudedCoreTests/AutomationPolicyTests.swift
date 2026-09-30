@@ -70,7 +70,49 @@ final class AutomationPolicyTests: XCTestCase {
         let bytes = try JSONEncoder().encode(HostingAutomation())
         var object = try XCTUnwrap(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
         object.removeValue(forKey: "waitingRestart")
+        object.removeValue(forKey: "occupiedRestartPolicy")
         let decoded = try JSONDecoder().decode(HostingAutomation.self, from: JSONSerialization.data(withJSONObject: object))
         XCTAssertNil(decoded.waitingRestart)
+        XCTAssertNil(decoded.occupiedRestartPolicy)
+        XCTAssertEqual(decoded.effectiveOccupiedRestartPolicy, .wait)
+    }
+
+    func testSkipPolicyRequiresConfirmedEmptyServer() throws {
+        var automation = HostingAutomation(); automation.restartEnabled = true
+        let due = date(9, 29, 4); automation.nextRestart = due
+        automation.occupiedRestartPolicy = .skip
+        let restored = try JSONDecoder().decode(HostingAutomation.self, from: JSONEncoder().encode(automation))
+        XCTAssertEqual(restored.effectiveOccupiedRestartPolicy, .skip)
+        for players in [nil, -1, 1, 16] as [Int?] {
+            XCTAssertEqual(ScheduledRestartPolicy.decide(automation: restored, now: due, running: true, players: players), .skip)
+        }
+        XCTAssertEqual(ScheduledRestartPolicy.decide(automation: restored, now: due, running: true, players: 0), .run)
+        XCTAssertEqual(ScheduledRestartPolicy.decide(automation: restored, now: due, running: false, players: 0), .skip)
+        XCTAssertEqual(ScheduledRestartPolicy.decide(automation: restored, now: due.addingTimeInterval(-1), running: true, players: 0), .none)
+        XCTAssertEqual(ScheduledRestartPolicy.decide(automation: restored, now: due.addingTimeInterval(61), running: true, players: 0), .skip)
+    }
+
+    func testOccupiedPolicyEditReplacesPendingOccurrence() {
+        var previous = HostingAutomation(); previous.restartEnabled = true
+        previous.nextRestart = date(9, 29, 4); previous.waitingRestart = previous.nextRestart
+        var edited = previous; edited.occupiedRestartPolicy = .skip
+        let saved = edited.reconcilingRestart(with: previous, now: date(9, 29, 8), calendar: calendar)
+        XCTAssertEqual(saved.nextRestart, date(9, 30, 4))
+        XCTAssertNil(saved.waitingRestart)
+        edited = saved; edited.occupiedRestartPolicy = .wait
+        let waiting = edited.reconcilingRestart(with: saved, now: date(9, 30, 8), calendar: calendar)
+        XCTAssertEqual(waiting.nextRestart, date(10, 1, 4))
+        XCTAssertNil(waiting.waitingRestart)
+    }
+
+    func testExplicitDefaultPolicyPreservesPendingOccurrence() {
+        var previous = HostingAutomation(); previous.restartEnabled = true
+        previous.nextRestart = date(9, 29, 4); previous.waitingRestart = previous.nextRestart
+        var edited = previous; edited.occupiedRestartPolicy = .wait
+        let saved = edited.reconcilingRestart(with: previous, now: date(9, 29, 8), calendar: calendar)
+        XCTAssertEqual(saved.nextRestart, previous.nextRestart)
+        XCTAssertEqual(saved.waitingRestart, previous.waitingRestart)
+        XCTAssertEqual(ScheduledRestartPolicy.decide(automation: saved, now: date(9, 29, 8), running: true, players: nil), .waiting)
+        XCTAssertEqual(ScheduledRestartPolicy.decide(automation: saved, now: date(9, 29, 8), running: true, players: 0), .run)
     }
 }

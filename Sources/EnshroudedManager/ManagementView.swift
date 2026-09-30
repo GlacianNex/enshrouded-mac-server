@@ -4,7 +4,6 @@ import EnshroudedCore
 
 struct ManagementView: View {
     @ObservedObject var model: Model
-    @State private var settingsOpen = false
     @State private var setupOpen = false
     var removeServer: () -> Void = {}
     var body: some View {
@@ -22,7 +21,7 @@ struct ManagementView: View {
                 Spacer()
             }.padding(.horizontal, 8)
             if model.busy {
-                HStack { ProgressView().controlSize(.small); VStack(alignment: .leading) { Text(model.operationTitle).font(.headline); Text("Keep the manager open until this operation finishes.").font(.caption).foregroundStyle(.secondary) }; Spacer(); Button("Show Progress") { LogsWindowController.show(model: model) } }.padding(12).background(.background.secondary, in: RoundedRectangle(cornerRadius: 8))
+                HStack { ProgressView().controlSize(.small); VStack(alignment: .leading) { Text(model.operationTitle).font(.headline); Text("Keep the manager open until this operation finishes.").font(.caption).foregroundStyle(.secondary) }; Spacer(); Button("Show Progress") { ServerProgressWindow.show(model: model) } }.padding(12).background(.background.secondary, in: RoundedRectangle(cornerRadius: 8))
             }
             if model.state == "NOT_INSTALLED" {
                 GroupBox("Set up your Enshrouded server") {
@@ -46,24 +45,24 @@ struct ManagementView: View {
                 ("Backups", AnyView(BackupsView(model: model)))
             ])
             HStack(spacing: 6) {
-                Button(model.state == "RUNNING" ? "Stop Server" : "Start Server") { model.run(model.state == "RUNNING" ? "stop" : "start") }
-                    .disabled(model.busy || (model.state != "RUNNING" && !model.canEdit))
-                Button("Server Settings") { settingsOpen = true }.disabled(model.state == "NOT_INSTALLED" || model.busy)
+                Button(model.busy ? model.operationTitle : ["RUNNING", "RECOVERING"].contains(model.state) ? "Stop Server" : "Start Server") { model.run(["RUNNING", "RECOVERING"].contains(model.state) ? "stop" : "start") }
+                    .disabled(model.busy || (!["RUNNING", "RECOVERING"].contains(model.state) && !model.canEdit))
+                Button("Server Settings") { EditorWindows.showSettings(model) }.disabled(!["RUNNING", "RECOVERING", "INSTALLED", "VM_STOPPED"].contains(model.state))
                 Button("Open Log") { LogsWindowController.show(model: model) }
-                Button("Logs Folder") { NSWorkspace.shared.open(model.engine.data.appendingPathComponent("logs")) }
+                Button("Logs Folder") { NSWorkspace.shared.open(model.engine.serverLogFolder) }
                 Button("Open Server Folder") { NSWorkspace.shared.open(model.engine.data.appendingPathComponent("server")) }
             }.font(.system(size: 11)).controlSize(.small)
             HStack {
                 Text(model.busy ? model.operationTitle : model.automationMessage).lineLimit(1)
                 Spacer()
+                Button("Delete Server…", action: removeServer).disabled(model.busy)
                 if let check = model.lastCheck { Text("Checked \(check, style: .time)") }
             }.font(.system(size: 11)).foregroundStyle(.secondary).frame(height: 16)
         }.padding(16).frame(width: 640, height: 860)
         .background(ManagementWindowTitle(name: model.name))
-        .sheet(isPresented: $settingsOpen) { SettingsView(model: model, draft: model.settings) }
         .sheet(isPresented: $setupOpen) { SetupView(model: model, draft: model.settings) }
         .confirmationDialog("Update or repair the Enshrouded server?", isPresented: $model.showMaintenance, titleVisibility: .visible) {
-            Button("Update Enshrouded Server") { model.run("update"); LogsWindowController.show(model: model) }
+            Button("Update Enshrouded Server") { model.run("update") }
         } message: { Text("Running servers must be empty. The manager saves and stops, backs up the world and configuration, then downloads and validates the latest files from Valve. A previously running server restarts; a stopped server stays stopped.") }
         .confirmationDialog("Save and restart this server?", isPresented: $model.showRestart, titleVisibility: .visible) {
             Button("Save & Restart") { model.run("restart") }
@@ -128,14 +127,14 @@ struct PerformanceView: View {
         } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    if model.pingHistory.values.allSatisfy(\.isEmpty) {
+                    if model.visiblePingIDs.isEmpty {
                         VStack(spacing: 10) {
                             Image(systemName: "network").font(.largeTitle).foregroundStyle(.secondary)
-                            Text("No players connected").font(.headline)
-                            Text("Player latency appears here after someone joins.").font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                            Text(model.playerCount == 0 || model.stopped ? "No players connected" : "No current latency report").font(.headline)
+                            Text("Readings appear when Enshrouded reports an active connection.").font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
                         }.frame(maxWidth: .infinity, minHeight: 380)
                     }
-                    ForEach(model.pingHistory.keys.sorted(), id: \.self) { id in
+                    ForEach(model.visiblePingIDs, id: \.self) { id in
                         MetricGraph(title: "Connection \(id)", subtitle: "Milliseconds · reported by Enshrouded, about every 30 seconds", points: model.pingHistory[id] ?? [], color: .blue)
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading)

@@ -10,7 +10,12 @@ public enum ManagerInstallation {
         guard !sameLocation(source, destination) else { throw EngineError("That is the app already running") }
         let incoming = try BuildInfo.read(app: source)
         let installed = try BuildInfo.read(app: destination)
-        guard incoming.canReplace(installed) else { throw EngineError("This stable version is already installed or newer.") }
+        guard incoming.canReplace(installed) else {
+            if installed.experimental && !incoming.experimental {
+                throw EngineError("An experimental manager is installed. To return to stable, replace the app in Applications using Finder.")
+            }
+            throw EngineError("This stable version is already installed or newer.")
+        }
         try verify(source)
         return incoming
     }
@@ -48,7 +53,40 @@ public enum ManagerInstallation {
             throw error
         }
     }
-    /// Keep Previous.app for recovery until the new build has been used successfully.
+    /// Called only after the replacement app has successfully reopened.
+    public static func cleanupSuccessfulReplacement(previous: URL, destination: URL) throws {
+        let files = FileManager.default
+        let transaction = previous.deletingLastPathComponent()
+        let prefix = ".enshrouded-update-"
+        let name = transaction.lastPathComponent
+        let parent = destination.deletingLastPathComponent()
+        guard previous.isFileURL, destination.isFileURL,
+              previous.lastPathComponent == "Previous.app",
+              !previous.pathComponents.contains(".."), !previous.pathComponents.contains("."),
+              name.hasPrefix(prefix), UUID(uuidString: String(name.dropFirst(prefix.count))) != nil,
+              sameLocation(transaction.deletingLastPathComponent(), parent) else {
+            throw EngineError("The previous manager could not be cleaned up safely.")
+        }
+        func requireDirectory(_ url: URL) throws {
+            let attributes = try files.attributesOfItem(atPath: url.path)
+            guard attributes[.type] as? FileAttributeType == .typeDirectory else {
+                throw EngineError("The previous manager could not be cleaned up safely.")
+            }
+        }
+        try requireDirectory(transaction)
+        try requireDirectory(destination)
+        // A fresh installation has an empty transaction and no Previous.app.
+        let contents = try files.contentsOfDirectory(atPath: transaction.path)
+        guard contents.allSatisfy({ $0 == "Previous.app" }) else {
+            throw EngineError("The previous manager could not be cleaned up safely.")
+        }
+        if !contents.isEmpty { try requireDirectory(previous) }
+        _ = try BuildInfo.read(app: destination)
+        try verify(destination)
+        try files.removeItem(at: transaction)
+    }
+
+    /// Keep Previous.app for recovery until the new build has reopened successfully.
     public static func replace(_ source: URL, destination: URL, progress: (ManagerInstallStage) -> Void = { _ in }, beforeReplace: () throws -> Void) throws -> URL {
         progress(.checking)
         let fm = FileManager.default
@@ -105,10 +143,10 @@ extension ManagerInstallation {
                 progress(.closing)
                 output("Closing the previous manager…\n")
                 try closeManager()
-                for (engine, state) in states where state == "RUNNING" || state == "INSTALLED" {
+                for (engine, state) in states where state == "RUNNING" || state == "RECOVERING" || state == "INSTALLED" {
                     progress(.saving)
                     output("Saving and stopping server at \(engine.home.path)…\n")
-                    if state == "RUNNING" {
+                    if state == "RUNNING" || state == "RECOVERING" {
                         stopped.append(engine)
                         try Data("resume\n".utf8).write(to: engine.home.appendingPathComponent("resume-after-manager-update"), options: .atomic)
                     }

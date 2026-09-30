@@ -8,8 +8,8 @@ struct AutomationView: View {
             VStack(alignment: .leading, spacing: 18) {
                 GroupBox("Startup & Scheduled Restarts") {
                     VStack(alignment: .leading, spacing: 12) {
-                        Toggle("Open the manager and start this server at login", isOn: binding(\.startAtLogin))
-                        Text("Starts after you sign in. Allow Login Items access if macOS asks. Keep the manager open for scheduled tasks.").font(.caption).foregroundStyle(.secondary)
+                        Toggle("Start This Server at Login", isOn: binding(\.startAtLogin))
+                        Text("Starts this server after you sign in. Open Manager at Login is a separate option in the menu bar. Keep the manager open for scheduled tasks.").font(.caption).foregroundStyle(.secondary)
                         Toggle("Schedule restarts", isOn: binding(\.restartEnabled))
                         HStack {
                             Picker("Hour", selection: binding(\.hour)) { ForEach(0..<24) { Text(String(format: "%02d", $0)).tag($0) } }.frame(width: 130)
@@ -22,8 +22,15 @@ struct AutomationView: View {
                                 Toggle(Calendar.current.shortWeekdaySymbols[day - 1], isOn: Binding(get: { model.automation.weekdays.contains(day) }, set: { enabled in var value = model.automation; if enabled { value.weekdays.append(day) } else { value.weekdays.removeAll { $0 == day } }; model.saveAutomation(value) })).toggleStyle(.button)
                             } }.disabled(!model.automation.restartEnabled)
                         }
+                        Picker("Players Online", selection: Binding(get: { model.automation.effectiveOccupiedRestartPolicy }, set: { policy in
+                            var value = model.automation; value.occupiedRestartPolicy = policy; model.saveAutomation(value)
+                        })) {
+                            Text("Wait Until the Server Is Empty").tag(OccupiedRestartPolicy.wait)
+                            Text("Skip This Restart").tag(OccupiedRestartPolicy.skip)
+                        }.disabled(!model.automation.restartEnabled)
+                        .help("If the player count is unavailable, the manager waits or skips according to this setting. It never assumes the server is empty.")
                         if let next = model.automation.nextRestart { Text("Next restart: \(next.formatted())").font(.caption) }
-                        Text("Restarts wait until the server is confirmed empty. Stopped servers stay stopped.").font(.caption).foregroundStyle(.secondary)
+                        Text(model.automation.effectiveOccupiedRestartPolicy == .skip ? "Restarts are skipped if players are connected or the player count is unavailable. Stopped servers stay stopped." : "Restarts wait until the server is confirmed empty. Stopped servers stay stopped.").font(.caption).foregroundStyle(.secondary)
                     }.padding(10)
                 }
                 GroupBox("Scheduled Backups") {

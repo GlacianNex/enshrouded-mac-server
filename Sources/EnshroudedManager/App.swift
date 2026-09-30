@@ -53,6 +53,11 @@ struct EnshroudedApp: App {
         if NSApp.modalWindow != nil { NSApp.abortModal() }
         NSApp.terminate(nil)
     }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        // Closing a window is never a request to quit this menu-bar app.
+        // Keep the fleet and its in-flight operations alive without a window.
+        false
+    }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard !ApplicationLifetime.allowTermination, ApplicationLifetime.isBusy else {
             dismissQuitNotice()

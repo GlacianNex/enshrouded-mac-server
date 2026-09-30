@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.9 (Candidate)
+
+- Keep hosting and pending operations alive when management or progress windows close. Settings and New Server use independent windows with retained drafts.
+- Separate server login startup from opening the manager; preserve sleep protection outside the UI and recover unexpected game exits with throttled retries.
+- Show server update stages, elapsed time and reported download progress; refresh menu update availability in place and clean successful manager replacements.
+- Add stopped-server UDP port editing with conflict checks and rollback, protect stale settings drafts, improve read-only inspection, and expose server deletion in management.
+- Add skip-or-wait scheduled restart policy, current-player ping filtering, telemetry during operations, accurate report-age handling, and fresh installer/activity logs.
+- Accept validated save files, folders and ZIPs for world import.
+- Record a new Valheim behavior audit, implementation plan and explicit verification limits.
+
 ## 0.1.8 (Candidate)
 
 - Replace the blocking generic quit warning with a live notice naming the server and active operation.

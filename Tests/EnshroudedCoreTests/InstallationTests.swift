@@ -109,6 +109,37 @@ final class InstallationTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: engine.home.appendingPathComponent("resume-after-manager-update").path))
         XCTAssertEqual(try BuildInfo.read(app: old).build, "1")
     }
+    func testManagerUpdateStopsRecoveringServerAndPreservesResumeIntent() throws {
+        let files = FileManager.default
+        let engine = try ManagerTests().fixture()
+        defer { try? files.removeItem(at: engine.home) }
+        let installed = try app(at: engine.home, name: "Installed", experimental: true, build: "1")
+        let incoming = try app(at: engine.home, name: "Incoming", experimental: true, build: "2")
+        let script = #"""
+        #!/bin/sh
+        if [ "$1" = list ]; then echo Running
+        elif [ "$5" = status ]; then echo RECOVERING
+        elif [ "$5" = stop ]; then touch "$LIMA_HOME/../stop-requested"
+        elif [ "$3" = sudo ]; then test -f "$LIMA_HOME/../stop-requested"
+        elif [ "$1" = stop ]; then
+          test -f "$LIMA_HOME/../stop-requested" || exit 8
+          touch "$LIMA_HOME/../environment-stopped"
+        else exit 7
+        fi
+        """#
+        try script.write(to: engine.lima, atomically: true, encoding: .utf8)
+        try files.setAttributes([.posixPermissions: 0o700], ofItemAtPath: engine.lima.path)
+        let previous = try ManagerInstallation.replaceManagingServers(incoming, destination: installed, engines: [engine], progress: { stage in
+            if stage == .replacing {
+                XCTAssertTrue(files.fileExists(atPath: engine.home.appendingPathComponent("environment-stopped").path))
+                XCTAssertTrue(files.fileExists(atPath: engine.home.appendingPathComponent("resume-after-manager-update").path))
+                XCTAssertEqual(try? BuildInfo.read(app: installed).build, "1")
+            }
+        })
+        XCTAssertEqual(try BuildInfo.read(app: installed).build, "2")
+        XCTAssertEqual(try BuildInfo.read(app: previous).build, "1")
+        XCTAssertTrue(files.fileExists(atPath: engine.home.appendingPathComponent("resume-after-manager-update").path))
+    }
     func testDownloadedAppInstallsInsteadOfManagingRegardlessOfRunningState() {
         let installed = URL(fileURLWithPath: "/Applications/Enshrouded Server Manager.app")
         let downloaded = URL(fileURLWithPath: "/Users/example/Downloads/Enshrouded Server Manager.app")
@@ -185,6 +216,76 @@ final class InstallationTests: XCTestCase {
         XCTAssertThrowsError(try ManagerInstallation.replace(new, destination: old) { throw EngineError("players joined") })
         XCTAssertEqual(try BuildInfo.read(app: old).build, "1")
         try ManagerInstallation.verify(old)
+    }
+    func testSuccessfulReplacementCleanupRemovesOnlyItsOwnTransaction() throws {
+        let files = FileManager.default
+        let root = files.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? files.removeItem(at: root) }
+        let installed = try app(at: root, name: "Installed", experimental: true, build: "1")
+        let incoming = try app(at: root, name: "Incoming", experimental: true, build: "2")
+        let earlier = try ManagerInstallation.replace(incoming, destination: installed) {}
+        let previous = try ManagerInstallation.replace(incoming, destination: installed) {}
+        try ManagerInstallation.cleanupSuccessfulReplacement(previous: previous, destination: installed)
+        XCTAssertFalse(files.fileExists(atPath: previous.deletingLastPathComponent().path))
+        XCTAssertTrue(files.fileExists(atPath: earlier.path))
+        XCTAssertEqual(try BuildInfo.read(app: installed).build, "2")
+    }
+    func testReplacementCleanupPreservesBackupWhenDestinationIsMissingOrInvalid() throws {
+        let files = FileManager.default
+        let root = files.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? files.removeItem(at: root) }
+        let installed = try app(at: root, name: "Installed", experimental: true, build: "1")
+        let incoming = try app(at: root, name: "Incoming", experimental: true, build: "2")
+        let previous = try ManagerInstallation.replace(incoming, destination: installed) {}
+        try files.removeItem(at: installed)
+        XCTAssertThrowsError(try ManagerInstallation.cleanupSuccessfulReplacement(previous: previous, destination: installed))
+        try files.createDirectory(at: installed, withIntermediateDirectories: false)
+        XCTAssertThrowsError(try ManagerInstallation.cleanupSuccessfulReplacement(previous: previous, destination: installed))
+        XCTAssertTrue(files.fileExists(atPath: previous.path))
+    }
+    func testReplacementCleanupRejectsUnrelatedNestedAndSymlinkPaths() throws {
+        let files = FileManager.default
+        let root = files.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? files.removeItem(at: root) }
+        let installed = try app(at: root, name: "Installed", experimental: true, build: "1")
+        let arbitrary = root.appendingPathComponent("Unrelated/Previous.app")
+        let nested = root.appendingPathComponent("Nested/.enshrouded-update-\(UUID().uuidString)/Previous.app")
+        for path in [arbitrary, nested] {
+            try files.createDirectory(at: path, withIntermediateDirectories: true)
+            XCTAssertThrowsError(try ManagerInstallation.cleanupSuccessfulReplacement(previous: path, destination: installed))
+            XCTAssertTrue(files.fileExists(atPath: path.path))
+        }
+        let link = root.appendingPathComponent(".enshrouded-update-\(UUID().uuidString)")
+        try files.createSymbolicLink(at: link, withDestinationURL: arbitrary.deletingLastPathComponent())
+        XCTAssertThrowsError(try ManagerInstallation.cleanupSuccessfulReplacement(previous: link.appendingPathComponent("Previous.app"), destination: installed))
+        XCTAssertTrue(files.fileExists(atPath: arbitrary.path))
+        let transaction = root.appendingPathComponent(".enshrouded-update-\(UUID().uuidString)")
+        try files.createDirectory(at: transaction, withIntermediateDirectories: false)
+        let previousLink = transaction.appendingPathComponent("Previous.app")
+        try files.createSymbolicLink(at: previousLink, withDestinationURL: arbitrary)
+        XCTAssertThrowsError(try ManagerInstallation.cleanupSuccessfulReplacement(previous: previousLink, destination: installed))
+        XCTAssertTrue(files.fileExists(atPath: arbitrary.path))
+    }
+    func testStableReplacementOfExperimentalExplainsFinderAction() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let installed = try app(at: root, name: "Installed", experimental: true, build: "1")
+        let incoming = try app(at: root, name: "Incoming", experimental: false, build: "2")
+        XCTAssertThrowsError(try ManagerInstallation.validate(incoming, replacing: installed)) { error in
+            XCTAssertTrue(error.localizedDescription.contains("using Finder"))
+        }
+    }
+    func testSuccessfulFirstInstallCleansEmptyTransaction() throws {
+        let files = FileManager.default
+        let root = files.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? files.removeItem(at: root) }
+        let incoming = try app(at: root, name: "Incoming", experimental: false, build: "1")
+        let destination = root.appendingPathComponent("Installed.app")
+        let previous = try ManagerInstallation.replace(incoming, destination: destination) {}
+        XCTAssertFalse(files.fileExists(atPath: previous.path))
+        try ManagerInstallation.cleanupSuccessfulReplacement(previous: previous, destination: destination)
+        XCTAssertFalse(files.fileExists(atPath: previous.deletingLastPathComponent().path))
+        try ManagerInstallation.verify(destination)
     }
     func testGameplayMinutesAndBounds() throws {
         let data = Data(#"{"key":"dayTimeDuration","label":"Daytime","kind":"number","default":"1800000000000","minimum":2,"maximum":60,"choices":[],"minutes":true}"#.utf8)

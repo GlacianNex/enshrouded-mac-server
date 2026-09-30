@@ -6,7 +6,7 @@ import EnshroudedCore
 @MainActor final class FleetModel: ObservableObject {
     @Published var models: [Model]
     @Published var selectedID: String
-    @Published var showNewServer = false
+    @Published var managerAtLogin = SMAppService.mainApp.status == .enabled
     @Published var error: String?
     @Published var managerRelease: ManagerRelease?
     @Published var checkingManagerRelease = false
@@ -69,6 +69,7 @@ import EnshroudedCore
         subscriptions.removeAll()
         for model in models {
             model.fleetEngines = models.map(\.engine)
+            model.profileStore = store
             model.managerUpdateHandler = { [weak self] in self?.chooseManagerUpdate() }
             model.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions) }
     }
@@ -82,6 +83,13 @@ import EnshroudedCore
         if running.isEmpty { return models.allSatisfy { $0.stopped || $0.state == "NOT_INSTALLED" } ? "0" : "…" }
         guard running.allSatisfy({ $0.playerCount != nil }) else { return "…" }
         return String(running.compactMap(\.playerCount).reduce(0, +))
+    }
+    func setManagerAtLogin(_ enabled: Bool) {
+        guard ProcessInfo.processInfo.environment["ESM_HOME"] == nil else { error = "Login startup is unavailable in an isolated test environment."; return }
+        do {
+            if enabled { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
+            managerAtLogin = enabled
+        } catch { self.error = "Could not change manager login startup: " + error.localizedDescription }
     }
     var canChangeProfiles: Bool { !models.contains { $0.busy && $0.activeAction != "stop" } }
     func create(settings: ServerSettings, port: Int) throws {
@@ -116,14 +124,14 @@ struct FleetView: View {
                 VStack(spacing: 16) {
                     Text("No Servers").font(.title2.bold())
                     Text("Create a server to get started. Existing installation files are reused.")
-                    Button("New Server…") { fleet.showNewServer = true }.disabled(!fleet.canChangeProfiles)
+                    Button("New Server…") { EditorWindows.showNew(fleet) }.disabled(!fleet.canChangeProfiles)
                 }.frame(width: 640, height: 860)
             } else {
                 ManagementView(model: fleet.selected, removeServer: { fleet.removeSelectedServer() }).id(fleet.selectedID)
             }
         }.onAppear {
             if fleet.statusMenu == nil { fleet.statusMenu = StatusMenu(fleet: fleet, showManagement: { openWindow(id: "management") }) }
-        }.sheet(isPresented: $fleet.showNewServer) { NewServerView(fleet: fleet) }
+        }
     }
 }
 struct NewServerView: View {
@@ -133,7 +141,7 @@ struct NewServerView: View {
     @State private var error: String?
     @FocusState private var focused: Field?
     private enum Field: Hashable { case name, player, admin, port }
-    @Environment(\.dismiss) private var dismiss
+    var close: () -> Void
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             Text("New Enshrouded Server").font(.title2.bold())
@@ -156,13 +164,14 @@ struct NewServerView: View {
             Text("Each server needs 8 GB of RAM, 30 GB of free disk space, and its own forwarded UDP port.").font(.callout).foregroundStyle(.secondary)
             if let error { Text(error).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true) }
             HStack {
-                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Cancel") { close() }.keyboardShortcut(.cancelAction)
                 Spacer()
                 Button("Create Server") {
                     do {
                         guard let number = Int(port.trimmingCharacters(in: .whitespacesAndNewlines)) else { throw EngineError("Enter a UDP port from 1024–65535.") }
                         try fleet.create(settings: draft, port: number)
-                        dismiss()
+                        close()
+                        fleet.statusMenu?.openSelectedManagement()
                     } catch { self.error = error.localizedDescription }
                 }.keyboardShortcut(.defaultAction)
             }
@@ -177,7 +186,7 @@ struct NewServerView: View {
 
 extension FleetModel {
     func chooseManagerUpdate() {
-        guard !models.contains(where: { $0.busy || $0.polling }) else { return }
+        guard !models.contains(where: \.busy) else { return }
         let panel = NSOpenPanel(); panel.title = "Choose the downloaded Enshrouded Manager app"
         panel.allowedContentTypes = [.applicationBundle]; panel.canChooseDirectories = false
         guard panel.runModal() == .OK, let source = panel.url else { return }
@@ -192,7 +201,7 @@ extension FleetModel {
     private func installManager(_ source: URL, destination: URL = Bundle.main.bundleURL, progressWindow: ManagerInstallProgressWindow? = nil) {
         let progress = progressWindow ?? ManagerInstallProgressWindow(logURL: selected.engine.home.appendingPathComponent("manager-activity.log"))
         let engines = models.map(\.engine)
-        for model in models { model.busy = true; model.operationTitle = "Updating manager…" }
+        for model in models { model.busy = true; model.serverProgress = nil; model.operationTitle = "Updating manager…" }
         Task {
             while models.contains(where: { $0.polling || $0.checkingRelease }) { try? await Task.sleep(for: .milliseconds(100)) }
             do {
@@ -211,7 +220,11 @@ extension FleetModel {
                     Task { @MainActor in
                         progress.close()
                         if let error { self.error = "Installed, but relaunch failed: \(error.localizedDescription). Open the manager in Finder to resume servers."; for model in self.models { model.busy = false; model.refresh() } }
-                        else { ApplicationLifetime.allowTermination = true; NSApp.terminate(nil) }
+                        else {
+                            do { try ManagerInstallation.cleanupSuccessfulReplacement(previous: backup, destination: destination) }
+                            catch { self.selected.recordActivity("Update completed; previous app cleanup failed: \(error.localizedDescription)\n") }
+                            ApplicationLifetime.allowTermination = true; NSApp.terminate(nil)
+                        }
                     }
                 }
             } catch {
@@ -227,7 +240,7 @@ extension FleetModel {
 
 extension FleetModel {
     func installInApplications() {
-        guard !models.contains(where: { $0.busy || $0.polling }) else { return }
+        guard !models.contains(where: \.busy) else { return }
         let destination = URL(fileURLWithPath: "/Applications/Enshrouded Server Manager.app")
         let alert = NSAlert(); alert.messageText = "Install Enshrouded Manager in Applications?"
         alert.informativeText = "The app will be copied and reopened from Applications. Running servers will stop and start back up once installation finishes."
@@ -238,14 +251,15 @@ extension FleetModel {
 
 extension FleetModel {
     func updateAllServers() {
-        guard !models.contains(where: { $0.busy || $0.polling }) else { return }
+        guard !models.contains(where: \.busy) else { return }
         let alert = NSAlert(); alert.messageText = "Update all installed Enshrouded servers?"
         alert.informativeText = "All running servers must be empty. Each installation is backed up and updated separately. Previously running servers restart; stopped servers stay stopped."
         alert.addButton(withTitle: "Update All Servers"); alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         let targets = models.filter { $0.state != "NOT_INSTALLED" }
-        for model in models { model.busy = true; model.operationTitle = "Updating servers…" }
+        for model in models { model.busy = true; model.serverProgress = nil; model.operationTitle = "Updating servers…" }
         Task {
+            while models.contains(where: { $0.polling || $0.checkingRelease }) { try? await Task.sleep(for: .milliseconds(100)) }
             do {
                 let engines = targets.map(\.engine)
                 try await Task.detached {
@@ -254,12 +268,18 @@ extension FleetModel {
                     }
                 }.value
                 for model in targets {
+                    model.serverProgress = ServerOperationProgress(action: "update")
+                    ServerProgressWindow.show(model: model)
                     let engine = model.engine
                     try await Task.detached {
-                        try engine.perform("update") { chunk in Task { @MainActor in model.recordActivity(chunk) } }
+                        try engine.perform("update") { chunk in Task { @MainActor in model.recordActivity(chunk); model.serverProgress?.consume(chunk) } }
                     }.value
+                    model.serverProgress?.finish(success: true)
                 }
-            } catch { self.error = error.localizedDescription }
+            } catch {
+                self.error = error.localizedDescription
+                for model in targets where model.serverProgress?.finished == false { model.serverProgress?.finish(success: false); model.error = error.localizedDescription }
+            }
             for model in models { model.busy = false; model.loadSettings(); model.refresh() }
         }
     }
@@ -270,14 +290,15 @@ extension FleetModel {
         alert.informativeText = "Stops this server and removes its settings and entry. Worlds, logs and backups are archived. Downloaded files and the environment stay available for reuse."
         alert.addButton(withTitle: "Delete Server"); alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-        model.busy = true; model.operationTitle = "Deleting server…"
+        model.busy = true; model.serverProgress = nil; model.operationTitle = "Deleting server…"
         let engine = model.engine, store = store
         Task {
             do {
                 while model.polling || model.checkingRelease { try? await Task.sleep(for: .milliseconds(100)) }
                 await model.flushActivity()
                 let remaining = try await Task.detached { try engine.deleteServer(store: store) }.value
-                model.retire(); models.removeAll { $0 === model }
+                EditorWindows.closeSettings(model); ServerProgressWindow.close(model); LogsWindowController.close(model)
+                model.busy = false; model.retire(); models.removeAll { $0 === model }
                 if models.isEmpty {
                     models = [Model(homeOverride: store.registry.deletingLastPathComponent().appendingPathComponent("unconfigured"), automaticStartup: false, sharedDownloads: sharedDownloads)]
                 }
@@ -285,10 +306,8 @@ extension FleetModel {
                 if ProcessInfo.processInfo.environment["ESM_HOME"] == nil {
                     if let first = remaining.first { UserDefaults.standard.set(first.home, forKey: "serverHome") }
                     else { UserDefaults.standard.removeObject(forKey: "serverHome") }
-                    if !models.contains(where: { $0.automation.startAtLogin }) && SMAppService.mainApp.status == .enabled {
-                        do { try await SMAppService.mainApp.unregister() }
-                        catch { self.error = "Server deleted, but login startup could not be disabled: " + error.localizedDescription }
-                    }
+                    do { try LoginStartup.configure(home: engine.home, enabled: false, executable: Bundle.main.executableURL!) }
+                    catch { self.error = "Server deleted, but login startup cleanup failed: " + error.localizedDescription }
                 }
             } catch { model.error = error.localizedDescription; model.busy = false; model.refresh() }
         }
@@ -299,7 +318,7 @@ extension FleetModel {
         alert.informativeText = "Stops all servers and removes downloaded server files, environments, compatibility tools and shared downloads. Keeps server settings, archived worlds, backups and the manager app."
         alert.addButton(withTitle: "Stop All & Uninstall"); alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-        for model in models { model.busy = true; model.operationTitle = "Uninstalling server files…" }
+        for model in models { model.busy = true; model.serverProgress = nil; model.operationTitle = "Uninstalling server files…" }
         let targets = models, store = store, shared = sharedDownloads
         Task {
             do {
@@ -359,7 +378,7 @@ extension FleetModel {
         prompt.informativeText = "Updating the manager will stop all running servers. They will start back up once the update finishes."
         prompt.addButton(withTitle: "Stop, Update & Relaunch"); prompt.addButton(withTitle: "Cancel")
         guard prompt.runModal() == .alertFirstButtonReturn else { return }
-        for model in models { model.busy = true; model.operationTitle = "Downloading manager…" }
+        for model in models { model.busy = true; model.serverProgress = nil; model.operationTitle = "Downloading manager…" }
         let progress = ManagerInstallProgressWindow(logURL: selected.engine.home.appendingPathComponent("manager-activity.log"))
         progress.advance(.downloading)
         selected.recordActivity("Downloading the manager update…\n")

@@ -6,6 +6,7 @@ import SwiftUI
     private static var openWindows: [String: LogsWindowController] = [:]
     private let serverID: String
 
+    static func close(_ model: Model) { openWindows[model.engine.home.path]?.window?.performClose(nil) }
     static func show(model: Model) {
         let key = model.engine.home.path
         let controller = openWindows[key] ?? LogsWindowController(model: model)

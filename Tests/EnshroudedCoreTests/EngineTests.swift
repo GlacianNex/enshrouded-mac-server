@@ -1,4 +1,5 @@
 import XCTest
+import Darwin
 @testable import EnshroudedCore
 
 final class EngineTests: XCTestCase {
@@ -41,9 +42,49 @@ final class EngineTests: XCTestCase {
         let script = "#!/bin/sh\nif [ \"$3\" = python3 ]; then echo \(encoded); else echo 'Server reports online'; fi\n"
         try script.write(to: engine.lima, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: engine.lima.path)
+        let (socket, port) = try boundPort()
+        close(socket)
+        try JSONEncoder().encode(ServerProfile(id: "test", name: "Test", home: root.path, port: Int(port))).write(to: root.appendingPathComponent("profile.json"))
         var output = ""
         try engine.perform("start") { output += $0 }
         XCTAssertTrue(output.contains("Server ready: Ready Test, 0/16 players."))
+    }
+    private func boundPort() throws -> (Int32, UInt16) {
+        let fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
+        var address = sockaddr_in()
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size); address.sin_family = sa_family_t(AF_INET)
+        var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+        let result = withUnsafeMutablePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                guard Darwin.bind(fd, $0, length) == 0 else { return Int32(-1) }
+                return getsockname(fd, $0, &length)
+            }
+        }
+        guard result == 0 else { close(fd); throw EngineError("Test socket failed") }
+        return (fd, UInt16(bigEndian: address.sin_port))
+    }
+    func testForeignOccupiedPortFailsBeforeStartingOrChangingForwarding() throws {
+        let engine = try ManagerTests().fixture()
+        defer { try? FileManager.default.removeItem(at: engine.home) }
+        let (fd, port) = try boundPort(); defer { close(fd) }
+        try JSONEncoder().encode(ServerProfile(id: "test", name: "Test", home: engine.home.path, port: Int(port))).write(to: engine.home.appendingPathComponent("profile.json"))
+        try Data().write(to: engine.data.appendingPathComponent("server/enshrouded_server.exe"))
+        let commands = engine.home.appendingPathComponent("commands")
+        try "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '\(commands.path)'\n".write(to: engine.lima, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: engine.lima.path)
+        // A forged receipt naming our own process is not a verified Lima agent.
+        try String(getpid()).write(to: engine.home.appendingPathComponent("lima/engine/ha.pid"), atomically: true, encoding: .utf8)
+        XCTAssertNil(engine.verifiedHostAgent())
+        XCTAssertThrowsError(try engine.perform("start") { _ in }) {
+            XCTAssertTrue($0.localizedDescription.contains("UDP port \(port) is already in use"))
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: commands.path))
+        try FileManager.default.removeItem(at: engine.home.appendingPathComponent("lima/engine/lima.yaml"))
+        XCTAssertThrowsError(try engine.perform("install") { _ in }) {
+            XCTAssertTrue($0.localizedDescription.contains("UDP port \(port) is already in use"))
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: commands.path))
+        XCTAssertGreaterThanOrEqual(fcntl(fd, F_GETFD), 0)
     }
     func testMountPathsRemainQuotedData() throws {
         let path = "/tmp/a \"quoted\"\npath: true"

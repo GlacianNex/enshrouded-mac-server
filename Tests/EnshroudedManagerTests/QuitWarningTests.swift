@@ -3,6 +3,17 @@ import AppKit
 @testable import EnshroudedManager
 
 final class QuitWarningTests: XCTestCase {
+    @MainActor func testClosingLastWindowKeepsManagerAliveEvenDuringStartup() {
+        let app = NSApplication.shared
+        let delegate = ManagerAppDelegate()
+        defer { ApplicationLifetime.activeOperations = { [] } }
+        ApplicationLifetime.activeOperations = { [] }
+        XCTAssertFalse(delegate.applicationShouldTerminateAfterLastWindowClosed(app))
+        ApplicationLifetime.activeOperations = { ["Test Server: Starting…"] }
+        XCTAssertFalse(delegate.applicationShouldTerminateAfterLastWindowClosed(app))
+        XCTAssertNil(delegate.quitNotice)
+    }
+
     @MainActor func testNoticeDoesNotBlockAndClearsWhenWorkFinishes() async throws {
         let app = NSApplication.shared
         let delegate = ManagerAppDelegate()

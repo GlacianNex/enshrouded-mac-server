@@ -5,6 +5,18 @@ import EnshroudedCore
 /// a second controller for the same servers.
 @main enum ManagerLauncher {
     @MainActor static func main() {
+        let arguments = CommandLine.arguments
+        if arguments.count == 3, ["--hosting-guard", "--start-at-login"].contains(arguments[1]) {
+            let engine = Engine(home: URL(fileURLWithPath: arguments[2]), resources: ProcessInfo.processInfo.environment["ESM_RESOURCES"].map { URL(fileURLWithPath: $0) } ?? Bundle.main.resourceURL!)
+            do {
+                if arguments[1] == "--hosting-guard" { try HostingGuard.run(engine: engine) }
+                else if engine.loadAutomation().startAtLogin {
+                    if try engine.status() != "RUNNING" { try engine.perform("start") { try? engine.appendActivity($0) } }
+                    try HostingGuard.ensure(engine: engine, executable: Bundle.main.executableURL!)
+                }
+            } catch { try? engine.appendActivity("Background hosting failed: \(error.localizedDescription)\n") }
+            return
+        }
         _ = NSApplication.shared
         if LaunchInstallation.prepare() { EnshroudedApp.main() }
     }
@@ -78,9 +90,11 @@ import EnshroudedCore
                 DispatchQueue.main.async { result = outcome }
             }
             while result == nil { RunLoop.current.run(until: Date().addingTimeInterval(0.1)) }
-            _ = try result!.get()
+            let previous = try result!.get()
             progress.advance(.opening)
             try reopen(destination)
+            do { try ManagerInstallation.cleanupSuccessfulReplacement(previous: previous, destination: destination) }
+            catch { try? installLog.appendActivity("Update completed; previous app cleanup failed: \(error.localizedDescription)\n") }
             try? installLog.appendActivity("Manager replacement and relaunch completed.\n")
         } catch {
             try? installLog.appendActivity("Installation failed: \(error.localizedDescription)\n")

@@ -28,12 +28,12 @@ struct SetupView: View {
             HStack {
                 Text(importedWorld == nil ? "Create a new Embervale world" : "Import: \(importedWorld!.lastPathComponent)")
                 Spacer(); Button("Choose Existing World…") {
-                    let panel = NSOpenPanel(); panel.title = "Select the main world file (eight hexadecimal characters, no suffix)"; panel.canChooseDirectories = false
+                    let panel = NSOpenPanel(); panel.title = "Choose an Enshrouded World"; panel.canChooseDirectories = true; panel.canChooseFiles = true; panel.allowsMultipleSelection = false; panel.message = "Choose a one-world folder, ZIP archive, or main save file (eight hexadecimal characters, no suffix)."
                     if panel.runModal() == .OK { importedWorld = panel.url }
                 }
                 if importedWorld != nil { Button("Clear") { importedWorld = nil } }
             }
-            Text("Stop the source game or server before importing. World saves are copied; characters stay with their players.").font(.caption).foregroundStyle(.secondary)
+            Text("Import a one-world folder, ZIP archive, or main save file. Stop the source game or server first. Originals are copied; characters stay with their players.").font(.caption).foregroundStyle(.secondary)
             Toggle("Start the server when setup finishes", isOn: $startWhenReady)
             Text("Internet hosting uses UDP \(model.engine.hostPort). Your router must forward that port to this Mac.").font(.caption)
             }
@@ -72,7 +72,7 @@ extension Model {
             try engine.perform("install") { chunk in Task { @MainActor in self.recordSetupActivity(chunk) } }
             Task { @MainActor in self.recordSetupActivity(SetupEvent(.configure, "Saving settings and preparing the world…").line) }
             try engine.saveSettings(settings)
-            if let world { try engine.importWorld(primaryFile: world) }
+            if let world { try WorldImportSource.withPreparedWorld(at: world) { try engine.importWorld(primaryFile: $0) } }
             if start {
                 Task { @MainActor in self.recordSetupActivity(SetupEvent(.start, "Starting the server and checking readiness…").line) }
                 try engine.perform("start") { chunk in Task { @MainActor in self.recordSetupActivity(chunk) } } }
@@ -87,12 +87,16 @@ extension Model {
     }
     func chooseWorldImport() {
         guard canEdit else { return }
-        let panel = NSOpenPanel(); panel.title = "Choose the main Enshrouded world file"; panel.canChooseDirectories = false
+        let panel = NSOpenPanel(); panel.title = "Choose an Enshrouded World"; panel.canChooseDirectories = true; panel.canChooseFiles = true; panel.allowsMultipleSelection = false; panel.message = "Choose a one-world folder, ZIP archive, or main save file (eight hexadecimal characters, no suffix)."
         guard panel.runModal() == .OK, let file = panel.url else { return }
         let alert = NSAlert(); alert.messageText = "Import this world?"
         alert.informativeText = "Back up the current world, then import the selected world. Settings and passwords stay the same. Stop the source game or server first."
         alert.addButton(withTitle: "Back Up & Import"); alert.addButton(withTitle: "Cancel")
-        if alert.runModal() == .alertFirstButtonReturn { operation("Import world") { try $0.importWorld(primaryFile: file) } }
+        if alert.runModal() == .alertFirstButtonReturn {
+            operation("Import world") { engine in
+                try WorldImportSource.withPreparedWorld(at: file) { try engine.importWorld(primaryFile: $0) }
+            }
+        }
     }
 }
 

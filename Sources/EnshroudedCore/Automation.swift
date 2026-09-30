@@ -1,5 +1,9 @@
 import Foundation
 
+public enum OccupiedRestartPolicy: String, Codable, CaseIterable {
+    case wait, skip
+}
+
 public struct HostingAutomation: Codable, Equatable {
     public var scheduledBackups: BackupSchedule?
     public var startAtLogin = false
@@ -13,8 +17,11 @@ public struct HostingAutomation: Codable, Equatable {
     public var nextRestart: Date?
     // Only an occurrence observed while waiting for players may run late.
     public var waitingRestart: Date?
+    /// Missing in older settings; retain their wait-until-empty behavior.
+    public var occupiedRestartPolicy: OccupiedRestartPolicy?
     public var lastAutomaticManifest: String?
     public init() {}
+    public var effectiveOccupiedRestartPolicy: OccupiedRestartPolicy { occupiedRestartPolicy ?? .wait }
     public func next(after date: Date, calendar: Calendar = .current) -> Date? {
         guard restartEnabled, (0...23).contains(hour), (0...59).contains(minute) else { return nil }
         if let days = everyDays, days > 1 {
@@ -42,7 +49,8 @@ public struct HostingAutomation: Codable, Equatable {
     public func reconcilingRestart(with previous: HostingAutomation, now: Date = Date(), calendar: Calendar = .current) -> HostingAutomation {
         var result = self
         let changed = restartEnabled != previous.restartEnabled || hour != previous.hour || minute != previous.minute ||
-            Set(weekdays) != Set(previous.weekdays) || everyDays != previous.everyDays || anchorDate != previous.anchorDate
+            Set(weekdays) != Set(previous.weekdays) || everyDays != previous.everyDays || anchorDate != previous.anchorDate ||
+            effectiveOccupiedRestartPolicy != previous.effectiveOccupiedRestartPolicy
         if changed {
             result.nextRestart = next(after: now, calendar: calendar)
             result.waitingRestart = nil
@@ -61,7 +69,9 @@ public enum ScheduledRestartPolicy {
         guard automation.restartEnabled, let due = automation.nextRestart, due <= now else { return .none }
         guard running else { return .skip }
         if now.timeIntervalSince(due) > 60 && automation.waitingRestart != due { return .skip }
-        return players == 0 ? .run : .waiting
+        guard players != 0 else { return .run }
+        // Unknown player counts are never treated as an empty server.
+        return automation.effectiveOccupiedRestartPolicy == .skip ? .skip : .waiting
     }
 }
 extension Engine {

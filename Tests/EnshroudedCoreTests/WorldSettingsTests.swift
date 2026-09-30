@@ -2,6 +2,38 @@ import XCTest
 @testable import EnshroudedCore
 
 final class WorldSettingsTests: XCTestCase {
+    func testStaleWindowCannotOverwriteExternalSettingsOrWorldRules() throws {
+        let engine = try ManagerTests().fixture()
+        defer { try? FileManager.default.removeItem(at: engine.home) }
+        let opened = try Data(contentsOf: engine.serverConfig)
+        var draft = try engine.readSettings()
+        draft.name = "Stale Draft"; draft.password = "player-secret"; draft.adminPassword = "admin-secret"; draft.preset = "Custom"
+        var external = try engine.readConfiguration()
+        external["name"] = "Changed Elsewhere"
+        external["gameSettings"] = ["playerHealthFactor": 3, "futureRule": 77]
+        let changed = try JSONSerialization.data(withJSONObject: external, options: .sortedKeys)
+        try changed.write(to: engine.serverConfig)
+        XCTAssertThrowsError(try engine.saveSettings(draft, worldRules: ["playerHealthFactor": "2"], expectedConfiguration: opened)) {
+            XCTAssertEqual($0.localizedDescription, "Settings changed since this window opened. Close and reopen Server Settings.")
+        }
+        XCTAssertEqual(try Data(contentsOf: engine.serverConfig), changed)
+        XCTAssertEqual(try engine.gameplayValues()["playerHealthFactor"] as? Int, 3)
+        XCTAssertEqual(try engine.gameplayValues()["futureRule"] as? Int, 77)
+    }
+    func testUnchangedExpectedConfigurationAllowsSaveAndUsesExactBytes() throws {
+        let engine = try ManagerTests().fixture()
+        defer { try? FileManager.default.removeItem(at: engine.home) }
+        let opened = try Data(contentsOf: engine.serverConfig)
+        var draft = try engine.readSettings()
+        draft.name = "New Name"; draft.password = "player-secret"; draft.adminPassword = "admin-secret"
+        // Even a byte-only external edit invalidates a window's snapshot.
+        let reformatted = opened + Data("\n".utf8)
+        try reformatted.write(to: engine.serverConfig)
+        XCTAssertThrowsError(try engine.saveSettings(draft, expectedConfiguration: opened))
+        XCTAssertEqual(try Data(contentsOf: engine.serverConfig), reformatted)
+        try engine.saveSettings(draft, expectedConfiguration: reformatted)
+        XCTAssertEqual(try engine.readSettings().name, "New Name")
+    }
     func testCombinedSettingsSaveIsAtomicAndPreservesUnknownRules() throws {
         let engine = try ManagerTests().fixture()
         defer { try? FileManager.default.removeItem(at: engine.home) }

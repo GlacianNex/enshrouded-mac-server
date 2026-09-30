@@ -7,6 +7,7 @@ public struct ServerSpeedHistory {
     public private(set) var points: [PerformancePoint] = []
     public private(set) var lastReport: Date?
     public private(set) var lastValue: Double?
+    public private(set) var reportTimeKnown = false
     private var identity: String?
     private var fileIdentifier: String?
     private var fileSize: UInt64 = 0
@@ -21,7 +22,7 @@ public struct ServerSpeedHistory {
         guard let running else { return }
         guard running else {
             if !stopped { segment += 1 }
-            stopped = true; lastReport = nil; lastValue = nil
+            stopped = true; lastReport = nil; lastValue = nil; reportTimeKnown = false
             // Do not reread an old report as fresh after restarting.
             identity = log.identityFor(relativeEnd: log.parsed.statsReportEnd) ?? identity
             return
@@ -31,18 +32,24 @@ public struct ServerSpeedHistory {
         let changedRun = invocation != nil && self.invocation != nil && invocation != self.invocation
         let truncated = !log.fileIdentifier.isEmpty && log.fileIdentifier == fileIdentifier && log.fileSize < fileSize
         if changedLog || changedRun || truncated {
-            segment += 1; lastReport = nil; lastValue = nil
+            segment += 1; lastReport = nil; lastValue = nil; reportTimeKnown = false
             if changedLog || truncated { identity = nil }
         }
         if let invocation { self.invocation = invocation }
         if !log.fileIdentifier.isEmpty { fileIdentifier = log.fileIdentifier; fileSize = log.fileSize }
         guard let next = log.identityFor(relativeEnd: log.parsed.statsReportEnd), next != identity,
               let value = log.parsed.updateRate, value.isFinite, value >= 0 else { return }
-        identity = next; lastReport = now; lastValue = value
-        points.append(.init(date: now, value: value, segment: segment))
+        identity = next; lastValue = value
+        lastReport = log.reportDate(at: now)
+        reportTimeKnown = lastReport != nil
+        // A report already on disk may predate this manager session. Do not
+        // invent an observation time when the log cannot establish its age.
+        if let lastReport, now.timeIntervalSince(lastReport) <= PerformanceHistory.duration {
+            points.append(.init(date: lastReport, value: value, segment: segment))
+        }
     }
     public func current(at now: Date) -> Double? {
-        guard let lastReport, now.timeIntervalSince(lastReport) <= Self.freshness else { return nil }
+        guard reportTimeKnown, let lastReport, (0...Self.freshness).contains(now.timeIntervalSince(lastReport)) else { return nil }
         return lastValue
     }
 }

@@ -118,8 +118,8 @@ public struct Engine {
         let marker = home.appendingPathComponent("internet-forward-v1")
         guard !fm.fileExists(atPath: marker.path) else { return }
         let current = try status()
-        output("Enabling network access on UDP 15637…\n")
-        if current == "RUNNING" {
+        output("Enabling network access on UDP \(hostPort)…\n")
+        if current == "RUNNING" || current == "RECOVERING" {
             try command(["shell", "engine", "bash", runtimeGuestScript, "stop"], output: output)
         }
         if current != "VM_STOPPED" {
@@ -128,7 +128,7 @@ public struct Engine {
         let backup = home.appendingPathComponent("lima-network-before-v1.yaml")
         if !fm.fileExists(atPath: backup.path) { try fm.copyItem(at: config, to: backup) }
         try command(["edit", "--tty=false", "--set", Self.internetForwardEdit, "engine"], output: output)
-        try Data("UDP 15637 enabled on all host IPv4 interfaces\n".utf8).write(to: marker, options: .atomic)
+        try Data("UDP \(hostPort) enabled on all host IPv4 interfaces\n".utf8).write(to: marker, options: .atomic)
     }
 
     var runtimeGuestScript: String {
@@ -225,13 +225,14 @@ public struct Engine {
         }
         if action == "install" {
             let current = try status()
-            guard current != "RUNNING" else { throw EngineError("Stop the server before installing or repairing it") }
+            guard current != "RUNNING", current != "RECOVERING" else { throw EngineError("Stop the server before installing or repairing it") }
             guard fm.isExecutableFile(atPath: lima.path) else { throw EngineError("Bundled runtime is missing. Rebuild or reinstall the app.") }
             for name in ["data", "data/server", "data/logs", "data/backups", "runtime", "lima"] {
                 try fm.createDirectory(at: home.appendingPathComponent(name), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             }
             let config = home.appendingPathComponent("engine.yaml")
             if !fm.fileExists(atPath: home.appendingPathComponent("lima/engine/lima.yaml").path) {
+                try ensureHostPortAvailable()
                 #if !arch(arm64)
                 throw EngineError("This runtime requires an Apple Silicon Mac")
                 #endif
@@ -249,6 +250,7 @@ public struct Engine {
                 try command(["start", "--tty=false", "--name=engine", config.path], output: output)
                 try Data("Network forwarding configured at creation\n".utf8).write(to: home.appendingPathComponent("internet-forward-v1"), options: .atomic)
             } else {
+                try ensureHostPortAvailable()
                 try enableInternetForwarding(output: output)
                 try command(["start", "--tty=false", "engine"], output: output)
             }
@@ -277,6 +279,7 @@ public struct Engine {
         } else {
             if action == "start" {
                 guard fm.fileExists(atPath: data.appendingPathComponent("server/enshrouded_server.exe").path) else { throw EngineError("Install the server first") }
+                try ensureHostPortAvailable()
                 try enableInternetForwarding(output: output)
                 try command(["start", "--tty=false", "engine"], output: output)
             }
@@ -324,5 +327,51 @@ public struct Engine {
         let bytes = try JSONSerialization.data(withJSONObject: config, options: [.prettyPrinted, .sortedKeys])
         try bytes.write(to: serverConfig, options: .atomic)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: serverConfig.path)
+    }
+}
+
+
+extension Engine {
+    func ensureHostPortAvailable() throws {
+        let owner = verifiedHostAgent()
+        try HostPortAvailability.ensureAvailable(port: hostPort, ownedHostAgentPID: owner?.pid)
+        guard owner?.isRunning != false else { throw EngineError("The server environment changed while checking UDP port \(hostPort). Try starting again.") }
+    }
+
+    /// A receipt alone is not ownership: check the live executable, exact argv
+    /// boundaries and the instance's pid/socket paths before granting exemption.
+    func verifiedHostAgent() -> ProcessLifetime? {
+        let receipt = home.appendingPathComponent("lima/engine/ha.pid")
+        guard let value = try? String(contentsOf: receipt), let pid = Int32(value.trimmingCharacters(in: .whitespacesAndNewlines)),
+              pid > 0, let lifetime = ProcessLifetime(pid: pid) else { return nil }
+        var executable = [CChar](repeating: 0, count: 4096)
+        guard proc_pidpath(pid, &executable, UInt32(executable.count)) > 0,
+              URL(fileURLWithPath: String(cString: executable)).resolvingSymlinksInPath() == lima.resolvingSymlinksInPath() else { return nil }
+        var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
+        var count = 0
+        guard sysctl(&mib, 3, nil, &count, nil, 0) == 0, count > 4, count <= 1_048_576 else { return nil }
+        var bytes = [UInt8](repeating: 0, count: count)
+        guard sysctl(&mib, 3, &bytes, &count, nil, 0) == 0 else { return nil }
+        let argc = bytes.prefix(4).enumerated().reduce(0) { $0 | (Int($1.element) << ($1.offset * 8)) }
+        guard argc > 1, argc < 100 else { return nil }
+        var offset = 4
+        while offset < count && bytes[offset] != 0 { offset += 1 }
+        while offset < count && bytes[offset] == 0 { offset += 1 }
+        var args: [String] = []
+        for _ in 0..<argc {
+            let start = offset
+            while offset < count && bytes[offset] != 0 { offset += 1 }
+            guard offset < count, let arg = String(bytes: bytes[start..<offset], encoding: .utf8) else { return nil }
+            args.append(arg); offset += 1
+        }
+        guard args.count >= 3, args[1] == "hostagent", args.last == "engine",
+              Self.hostAgentOption("--pidfile", in: args) == receipt.path,
+              Self.hostAgentOption("--socket", in: args) == home.appendingPathComponent("lima/engine/ha.sock").path,
+              lifetime.isRunning else { return nil }
+        return lifetime
+    }
+    private static func hostAgentOption(_ option: String, in args: [String]) -> String? {
+        guard args.filter({ $0 == option }).count == 1, let index = args.firstIndex(of: option), index + 1 < args.count else { return nil }
+        return args[index + 1]
     }
 }

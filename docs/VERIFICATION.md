@@ -1,5 +1,9 @@
 # Verification
 
+## Candidate 0.1.9
+
+See the [dated behavior audit](VALHEIM-PARITY-AUDIT-2026-09-30.md) and [implementation/evidence record](PARITY-IMPLEMENTATION-PLAN.md) for the complete comparison, corrections, current test counts and verification limits. This candidate is delivered for manual installation; it is not a public GitHub release.
+
 ## Release 0.1.2
 
 93 automated tests and GitHub CI pass. The signed, notarized, stapled app passes Gatekeeper and pre-distribution checks; both ZIP extraction methods pass validation. Separate-Mac validation remains pending. See the [Valheim audit](VALHEIM-PARITY.md) for transferred fixes, isolated UI checks, real release-download validation, and coverage limits.

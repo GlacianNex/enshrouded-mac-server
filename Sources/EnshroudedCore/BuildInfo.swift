@@ -18,7 +18,9 @@ public struct BuildInfo: Equatable {
     public var detail: String { "\(label) · build \(build)\(builtAt.isEmpty ? "" : " · " + builtAt)" }
     public func canReplace(_ installed: BuildInfo) -> Bool {
         if experimental { return true }
-        if installed.experimental { return true }
+        // Leaving experimental testing requires an explicit Finder replacement,
+        // matching the stable/experimental precedence used by the Valheim manager.
+        if installed.experimental { return false }
         return version.compare(installed.version, options: .numeric) == .orderedDescending
     }
     public static func read(app: URL) throws -> BuildInfo {

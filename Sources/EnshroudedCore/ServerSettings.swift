@@ -57,10 +57,15 @@ extension Engine {
         guard let value = try JSONSerialization.jsonObject(with: Data(contentsOf: serverConfig)) as? [String: Any] else { throw EngineError("Invalid server configuration") }
         return value
     }
-    public func saveSettings(_ settings: ServerSettings, worldRules: [String: String] = [:]) throws {
+    public func saveSettings(_ settings: ServerSettings, worldRules: [String: String] = [:], expectedConfiguration: Data? = nil) throws {
         try withOperationLock {
             guard ["INSTALLED", "VM_STOPPED"].contains(try status()) else { throw EngineError("Stop the server before changing settings") }
-            var value = try settings.applying(to: readConfiguration())
+            let configuration = try Data(contentsOf: serverConfig)
+            if let expectedConfiguration, configuration != expectedConfiguration {
+                throw EngineError("Settings changed since this window opened. Close and reopen Server Settings.")
+            }
+            guard let current = try JSONSerialization.jsonObject(with: configuration) as? [String: Any] else { throw EngineError("Invalid server configuration") }
+            var value = try settings.applying(to: current)
             if !worldRules.isEmpty {
                 guard settings.preset == "Custom" else { throw EngineError("Select Custom difficulty to change individual world rules.") }
                 var existing = value["gameSettings"] as? [String: Any] ?? [:]

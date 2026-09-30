@@ -62,7 +62,7 @@ prepare() {
 }
 case "${1:-}" in
   install)
-    if sudo systemctl is-active --quiet esm-server; then echo 'Stop the server before installing.' >&2; exit 1; fi
+    if sudo systemctl is-active --quiet esm-server || { test ! -f "$DATA/server-stop-request" && test "$(sudo systemctl show esm-server --property=SubState --value 2>/dev/null || true)" = auto-restart; }; then echo 'Stop the server before installing.' >&2; exit 1; fi
     prepare
     if test -d "$DATA/server/savegame"; then
       tar -czf "$DATA/backups/before-install-$(date -u +%Y%m%dT%H%M%SZ).tar.gz" -C "$DATA/server" savegame enshrouded_server.json
@@ -106,18 +106,42 @@ case "${1:-}" in
     echo 'Installation complete.'
     ;;
   run)
+    # Serialize the launch boundary with stop's marker. A pending recovery must
+    # never undo a deliberate stop, update, deletion or environment shutdown.
+    exec 9>"$DATA/server-launch.lock"
+    flock -x 9
+    if test -f "$DATA/server-stop-request"; then exit 0; fi
     cd "$DATA/server"
     test -f enshrouded_server.exe
     export SteamAppId=2278520 SteamGameId=2278520
     printf '2278520\n' > steam_appid.txt
-    exec xvfb-run -a box64 "$ROOT/wine/bin/wine" ./enshrouded_server.exe
+    xvfb-run -a box64 "$ROOT/wine/bin/wine" ./enshrouded_server.exe 9>&- &
+    child=$!
+    flock -u 9
+    exec 9>&-
+    result=0
+    wait "$child" || result=$?
+    if test -f "$DATA/server-stop-request"; then exit 0; fi
+    echo "Server exited unexpectedly (code $result). Recovery retries in 30 seconds." >&2
+    exit 1
     ;;
   start)
     test -f "$ROOT/ready-v1"
     if sudo systemctl is-active --quiet esm-server; then echo 'Server already running.'; exit 0; fi
+    if test "$(sudo systemctl show esm-server --property=SubState --value 2>/dev/null || true)" = auto-restart; then
+      if test -f "$DATA/server-stop-request"; then
+        # The marker prevents any game launch while canceling this old retry.
+        sudo systemctl stop esm-server
+      else
+        echo 'Server recovery is already pending.'; exit 0
+      fi
+    fi
+    rm -f -- "$DATA/server-stop-request"
     if test -f "$DATA/logs/server.log"; then mv "$DATA/logs/server.log" "$DATA/logs/server-$(date -u +%Y%m%dT%H%M%SZ).log"; fi
     sudo systemd-run --unit=esm-server --collect --uid="$(id -u)" --gid="$(id -g)" \
       --property=KillMode=control-group --property=TimeoutStopSec=infinity \
+      --property=Restart=on-failure --property=RestartSec=30 \
+      --property=StartLimitIntervalSec=300 --property=StartLimitBurst=5 \
       --property="StandardOutput=append:$DATA/logs/server.log" \
       --property="StandardError=append:$DATA/logs/server.log" \
       /bin/bash "$RUNTIME_DIR/guest.sh" run
@@ -130,6 +154,11 @@ case "${1:-}" in
     exit 1
     ;;
   stop)
+    exec 9>"$DATA/server-launch.lock"
+    flock -x 9
+    touch "$DATA/server-stop-request"
+    flock -u 9
+    exec 9>&-
     if ! sudo systemctl is-active --quiet esm-server; then echo 'Server is stopped.'; exit 0; fi
     python3 "$RUNTIME_DIR/stop-server.py"
     for ((i=0;i<120;i++)); do
@@ -141,6 +170,7 @@ case "${1:-}" in
     ;;
   status)
     if sudo systemctl is-active --quiet esm-server; then echo RUNNING;
+    elif test ! -f "$DATA/server-stop-request" && test "$(sudo systemctl show esm-server --property=SubState --value 2>/dev/null || true)" = auto-restart; then echo RECOVERING;
     elif test -f "$DATA/server/enshrouded_server.exe"; then echo INSTALLED;
     else echo NOT_INSTALLED; fi
     ;;

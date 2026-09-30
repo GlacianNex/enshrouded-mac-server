@@ -7,7 +7,7 @@ final class WorkflowTests: XCTestCase {
         let experimental = BuildInfo(version: "0.2.0", build: "2", experimental: true)
         XCTAssertTrue(experimental.canReplace(stable))
         XCTAssertTrue(experimental.canReplace(experimental))
-        XCTAssertTrue(stable.canReplace(experimental))
+        XCTAssertFalse(stable.canReplace(experimental))
         XCTAssertFalse(stable.canReplace(stable))
         XCTAssertTrue(BuildInfo(version: "1.0.1", build: "3", experimental: false).canReplace(stable))
     }
@@ -27,6 +27,11 @@ final class WorkflowTests: XCTestCase {
             XCTAssertThrowsError(try MaintenanceWorkflow.run(action: "restart", initialState: "RUNNING", empty: { if unknown { throw EngineError("timeout") }; return false }, execute: { steps.append($0) }, output: {_ in}))
             XCTAssertTrue(steps.isEmpty)
         }
+    }
+    func testMaintenanceDoesNotRacePendingCrashRecovery() {
+        var steps: [String] = []
+        XCTAssertThrowsError(try MaintenanceWorkflow.run(action: "update", initialState: "RECOVERING", empty: { true }, execute: { steps.append($0) }, output: { _ in }))
+        XCTAssertTrue(steps.isEmpty)
     }
     func testSteamQueryRejectsTruncationAndReadsPlayerCount() throws {
         var bytes: [UInt8] = [255,255,255,255,73,17]

@@ -5,31 +5,38 @@ import EnshroudedCore
 struct SettingsView: View {
     @ObservedObject var model: Model
     @State var draft: ServerSettings
+    let initiallyReadOnly: Bool
+    @State private var originalConfiguration: Data?
+    @State private var originalPort: UInt16 = 0
+    private var canEdit: Bool { !initiallyReadOnly && model.canEdit }
     @State private var reveal = false
     @State private var rules: [GameplayRule] = []
     @State private var ruleValues: [String: String] = [:]
     @State private var originalRules: [String: String] = [:]
     @State private var rulesLoaded = false
     @State private var error: String?
-    @Environment(\.dismiss) private var dismiss
+    var close: () -> Void
+    @State private var port = ""
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Text(model.stopped ? "Server Settings" : "Server Settings · Read Only").font(.title2.bold())
+                Text(initiallyReadOnly || !model.stopped ? "Server Settings · Read Only" : "Server Settings").font(.title2.bold())
                 Spacer()
             }
-            if !model.stopped { Text("Save and stop the server to edit settings.").foregroundStyle(.secondary) }
+            if initiallyReadOnly { Text("Close this window, stop the server, then reopen settings to edit.").foregroundStyle(.secondary) }
             Form {
                 Section("Server") {
-                    TextField("Server name", text: $draft.name)
-                    Stepper("Player slots: \(draft.slots)", value: $draft.slots, in: 1...16)
+                    if initiallyReadOnly { LabeledContent("Server Name", value: draft.name).textSelection(.enabled) }
+                    else { TextField("Server name", text: $draft.name).help("The name players see in Enshrouded’s dedicated server browser.") }
+                    TextField("UDP Port", text: $port).disabled(!canEdit).help("Forward this UDP port on your router. Changing it shuts down this server’s idle environment; start the server to apply it.")
+                    Stepper("Player slots: \(draft.slots)", value: $draft.slots, in: 1...16).disabled(!canEdit).help("Maximum simultaneous players. Applies the next time this server starts.")
                     Text("Maximum number of players who can join (1–16).").font(.caption).foregroundStyle(.secondary)
-                    Button("Import World…") { model.chooseWorldImport() }
-                }.disabled(!model.canEdit)
+                    Button("Import World…") { model.chooseWorldImport() }.disabled(!canEdit)
+                }.disabled(!canEdit && !initiallyReadOnly)
                 Section("World Rules") {
                     Picker("Difficulty preset", selection: $draft.preset) {
                         ForEach(ServerSettings.presets, id: \.self) { Text($0).tag($0) }
-                    }.disabled(!model.canEdit).help("Choose a preset managed by the game. Editing an individual rule automatically selects Custom.")
+                    }.disabled(!canEdit).help("Choose a preset managed by the game. Editing an individual rule automatically selects Custom.")
                     Text(presetHelp).font(.caption).foregroundStyle(.secondary)
                     if draft.preset == "Custom" {
                         Text("Edit the saved rules below. Multipliers use 1× for normal; durations are in minutes.")
@@ -41,31 +48,41 @@ struct SettingsView: View {
                     GameplayRulesView(rules: rules, values: Binding(
                         get: { ruleValues },
                         set: { ruleValues = $0; draft.preset = "Custom" }
-                    ), original: originalRules, canEdit: model.canEdit)
+                    ), original: originalRules, canEdit: canEdit)
                 }
                 Section("Role Passwords") {
-                    if reveal { TextField("Player (Friend)", text: $draft.password); TextField("Admin", text: $draft.adminPassword) }
-                    else { SecureField("Player (Friend)", text: $draft.password); SecureField("Admin", text: $draft.adminPassword) }
-                    Toggle("Show passwords", isOn: $reveal)
+                    if reveal && initiallyReadOnly {
+                        LabeledContent("Player (Friend)", value: draft.password).textSelection(.enabled)
+                        LabeledContent("Admin", value: draft.adminPassword).textSelection(.enabled)
+                    } else if reveal { TextField("Player (Friend)", text: $draft.password).disabled(!canEdit); TextField("Admin", text: $draft.adminPassword).disabled(!canEdit) }
+                    else { SecureField("Player (Friend)", text: $draft.password).disabled(!canEdit); SecureField("Admin", text: $draft.adminPassword).disabled(!canEdit) }
+                    Toggle("Show passwords", isOn: $reveal).disabled(false)
                     Text("Use different player and admin passwords, each at least 8 characters.").font(.caption).foregroundStyle(.secondary)
-                }.disabled(!model.canEdit)
+                        .help("The Friend password grants normal play; the Admin password grants server administration. Never share the Admin password with ordinary players.")
+                }
                 Section("Chat") {
-                    Toggle("Enable text chat", isOn: $draft.textChat)
-                    Toggle("Enable voice chat", isOn: $draft.voice)
-                    Picker("Voice range", selection: $draft.voiceMode) { Text("Proximity").tag("Proximity"); Text("Server-wide").tag("Global") }.disabled(!draft.voice)
-                }.disabled(!model.canEdit)
+                    Toggle("Enable text chat", isOn: $draft.textChat).help("Allow players to send text messages in this server’s chat.")
+                    Toggle("Enable voice chat", isOn: $draft.voice).help("Allow players to speak using Enshrouded’s voice chat.")
+                    Picker("Voice range", selection: $draft.voiceMode) { Text("Proximity").tag("Proximity"); Text("Server-wide").tag("Global") }.disabled(!draft.voice).help("Proximity limits voice to nearby players. Server-wide lets everyone hear it.")
+                }.disabled(!canEdit)
             }.formStyle(.grouped)
             if let error { Text(error).font(.caption).foregroundStyle(.red) }
             HStack {
                 Text("Changes take effect on the next server start.").font(.caption).foregroundStyle(.secondary)
-                Spacer(); Button("Cancel") { dismiss() }.disabled(model.busy)
-                Button("Save Settings", action: save).disabled(!model.canEdit || !rulesLoaded).keyboardShortcut(.defaultAction)
+                Spacer(); Button(canEdit ? "Cancel" : "Close") { close() }
+                if canEdit { Button("Save Settings", action: save).disabled(!rulesLoaded).keyboardShortcut(.defaultAction) }
             }
-        }.padding(22).frame(width: 640, height: 680)
+        }.padding(22).frame(minWidth: 640, minHeight: 680)
         .onAppear {
+            originalPort = model.engine.hostPort
+            port = String(originalPort)
             do {
+                let configuration = try Data(contentsOf: model.engine.serverConfig)
+                guard let value = try JSONSerialization.jsonObject(with: configuration) as? [String: Any] else { throw EngineError("Invalid server configuration") }
+                originalConfiguration = configuration
+                draft = ServerSettings(config: value)
                 rules = try model.engine.gameplayRules()
-                let saved = try model.engine.gameplayValues()
+                let saved = value["gameSettings"] as? [String: Any] ?? [:]
                 originalRules = Dictionary(uniqueKeysWithValues: rules.map { ($0.key, $0.display(saved[$0.key])) })
                 ruleValues = originalRules
                 rulesLoaded = true
@@ -77,10 +94,28 @@ struct SettingsView: View {
             _ = try draft.applying(to: [:])
             let changed = draft.preset == "Custom" ? ruleValues.filter { originalRules[$0.key] != $0.value } : [:]
             for rule in rules { if let value = changed[rule.key] { _ = try rule.parse(value) } }
+            guard let newPort = Int(port), (1024...65535).contains(newPort) else { throw EngineError("Enter a UDP port from 1024–65535.") }
+            guard model.engine.hostPort == originalPort, let originalConfiguration else { throw EngineError("Settings changed or are unavailable. Close and reopen Server Settings.") }
+            let oldPort = Int(originalPort)
+            let store = model.profileStore
             let settings = draft
             error = nil
-            model.operation("Save settings", work: { try $0.saveSettings(settings, worldRules: changed) }, completion: { success in
-                if success { dismiss() }
+            model.operation("Save settings", work: { engine in
+                guard try Data(contentsOf: engine.serverConfig) == originalConfiguration else { throw EngineError("Settings changed since this window opened. Close and reopen Server Settings.") }
+                if newPort != oldPort {
+                    guard let store else { throw EngineError("Server registration is unavailable. Reopen the manager and try again.") }
+                    try engine.changeHostPort(to: newPort, store: store)
+                }
+                do { try engine.saveSettings(settings, worldRules: changed, expectedConfiguration: originalConfiguration) }
+                catch {
+                    if newPort != oldPort, let store {
+                        do { try engine.changeHostPort(to: oldPort, store: store) }
+                        catch { throw EngineError("Settings were not saved; the UDP port is now \(engine.hostPort). Review the port before starting.") }
+                    }
+                    throw error
+                }
+            }, completion: { success in
+                if success { close() }
                 else { error = model.error ?? "Settings could not be saved. Try again." }
             })
         } catch { self.error = error.localizedDescription }
@@ -102,6 +137,7 @@ struct LogsView: View {
     @State private var autoScroll = true
     @State private var wrapText = true
     @State private var currentServerLog = ""
+    @State private var currentManagerLog = ""
     @State private var loading = true
     var close: () -> Void
     var body: some View {
@@ -119,17 +155,22 @@ struct LogsView: View {
             LogTextPane(text: displayed, wrap: wrapText, follow: autoScroll)
                 .frame(maxWidth: .infinity, maxHeight: .infinity).clipped()
             HStack {
-                Text(selected == "Server" ? "Latest 256 KB · refreshes every second" : "Recent manager activity")
+                Text(selected == "Server" ? "Latest 256 KB · refreshes every second" : "Server manager and installer activity · refreshes every second")
                     .font(.caption).foregroundStyle(.secondary)
-                Spacer(); Button("Open Log Folder") { NSWorkspace.shared.open(selected == "Server" ? model.engine.data.appendingPathComponent("logs") : model.engine.home) }
+                Spacer(); Button("Open Log Folder") { NSWorkspace.shared.open(selected == "Server" ? model.engine.serverLogFolder : model.engine.home) }
             }
         }.padding(20).frame(minWidth: 620, minHeight: 400)
         .task {
             let engine = model.engine
             while !Task.isCancelled {
-                let text = await Task.detached(priority: .utility) { engine.logTail() }.value
+                let logs = await Task.detached(priority: .utility) { () -> (String, String) in
+                    let installer = Engine(home: FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/Enshrouded Manager/Installer"), resources: engine.resources)
+                    let installText = ProcessInfo.processInfo.environment["ESM_HOME"] == nil ? installer.activityTail() : ""
+                    return (engine.logTail(), engine.activityTail() + (installText.isEmpty ? "" : "\n— Manager Installer —\n" + installText))
+                }.value
                 guard !Task.isCancelled else { return }
-                if currentServerLog != text { currentServerLog = text }
+                if currentServerLog != logs.0 { currentServerLog = logs.0 }
+                if currentManagerLog != logs.1 { currentManagerLog = logs.1 }
                 loading = false
                 do { try await Task.sleep(for: .seconds(1)) }
                 catch { return }
@@ -137,7 +178,7 @@ struct LogsView: View {
         }
     }
     var filtered: String {
-        LogDisplay.readable(selected == "Server" ? currentServerLog : model.activity, filter: filter)
+        LogDisplay.readable(selected == "Server" ? currentServerLog : currentManagerLog, filter: filter)
     }
     private var displayed: String {
         if selected == "Server" && loading { return "Loading logs…" }

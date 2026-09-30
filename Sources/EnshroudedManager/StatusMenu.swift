@@ -16,7 +16,7 @@ import EnshroudedCore
         super.init()
         menu.autoenablesItems = false; menu.delegate = self; item.menu = menu
         refreshStatus()
-        // Update only the status button while tracking; never rebuild menu rows.
+        // Refresh titles and enabled states in place; never replace hovered rows.
         let statusTimer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refreshStatus() }
         }
@@ -24,10 +24,22 @@ import EnshroudedCore
     }
     func refreshStatus() {
         for update in liveRows { update() }
-        item.button?.image = MenuBranding.image(running: fleet.models.contains { $0.state == "RUNNING" }, busy: fleet.models.contains { $0.busy })
+        item.button?.image = MenuBranding.image(running: fleet.models.contains { $0.state == "RUNNING" }, busy: fleet.models.contains { $0.busy || $0.state == "RECOVERING" })
         item.button?.title = " Enshrouded · \(fleet.menuValue)"
         item.button?.font = .monospacedDigitSystemFont(ofSize: 13, weight: .medium)
         item.button?.toolTip = "Enshrouded Manager · \(fleet.selected.build.detail)"
+        let serverUpdate = fleet.configuredModels.contains { $0.releaseError == nil && $0.release?.updateAvailable == true }
+        if fleet.managerUpdateAvailable || serverUpdate, let button = item.button {
+            let title = NSMutableAttributedString(string: button.title + " ", attributes: [
+                .font: button.font ?? NSFont.systemFont(ofSize: 13), .foregroundColor: NSColor.labelColor
+            ])
+            let badge = NSTextAttachment()
+            badge.image = NSImage(systemSymbolName: "arrow.down.circle.fill", accessibilityDescription: "Update available")
+            badge.bounds = NSRect(x: 0, y: -3, width: 16, height: 16)
+            title.append(NSAttributedString(attachment: badge))
+            button.attributedTitle = title
+            button.toolTip?.append(fleet.managerUpdateAvailable ? " A manager update is available." : " A server update is available.")
+        }
     }
     func menuNeedsUpdate(_ menu: NSMenu) { if !tracking { rebuild() } }
     func menuWillOpen(_ menu: NSMenu) { tracking = true }
@@ -89,6 +101,7 @@ import EnshroudedCore
         liveRows.last?()
     }
 
+    func openSelectedManagement() { open(fleet.selected) }
     private func open(_ server: Model) {
         fleet.selectedID = server.engine.home.path
         showManagement(); NSApp.activate(ignoringOtherApps: true)
@@ -96,18 +109,26 @@ import EnshroudedCore
     private func rebuild() {
         menu.removeAllItems(); actions.removeAll(); liveRows.removeAll()
         let experimental = fleet.selected.build.experimental
-        let available = fleet.managerUpdateAvailable
-        let managerTitle = experimental ? "Enshrouded Manager · Experimental"
-            : "Enshrouded Manager · \(fleet.selected.build.version) · \(fleet.managerUpdateStatus)"
-        add(managerTitle, to: menu, enabled: available && !fleet.models.contains(where: \.busy) && !fleet.checkingManagerRelease) { self.fleet.updateManager() }
-        if available {
-            menu.items.last?.image = NSImage(systemSymbolName: "arrow.down.circle.fill", accessibilityDescription: "Manager update available")
+        addLive(to: menu, title: { [weak self] in
+            guard let self else { return "Enshrouded Manager" }
+            return self.fleet.selected.build.experimental ? "Enshrouded Manager · Experimental"
+                : "Enshrouded Manager · \(self.fleet.selected.build.version) · \(self.fleet.managerUpdateStatus)"
+        }, enabled: { [weak self] in
+            guard let self else { return false }
+            return self.fleet.managerUpdateAvailable && !self.fleet.models.contains(where: \.busy) && !self.fleet.checkingManagerRelease
+        }) { self.fleet.updateManager() }
+        if let row = menu.items.last {
+            liveRows.append { [weak self, weak row] in
+                guard let self, let row else { return }
+                row.image = self.fleet.managerUpdateAvailable ? NSImage(systemSymbolName: "arrow.down.circle.fill", accessibilityDescription: "Manager update available") : nil
+                row.toolTip = self.fleet.selected.build.experimental
+                    ? "Public manager updates are disabled for experimental builds."
+                    : self.fleet.managerUpdateAvailable
+                        ? "Updating the manager will stop all running servers. They will start back up once the update finishes."
+                        : "Checks for manager updates at launch and every five minutes while the manager is open."
+            }
+            liveRows.last?()
         }
-        menu.items.last?.toolTip = experimental
-            ? "Public manager updates are disabled for experimental builds."
-            : available
-                ? "Updating the manager will stop all running servers. They will start back up once the update finishes."
-                : "Checks for manager updates at launch and every five minutes while the manager is open."
         if !experimental {
             addLive(to: menu, title: { [weak self] in self?.fleet.checkingManagerRelease == true ? "Checking for Manager Updates…" : "Check for Manager Updates" },
                 enabled: { [weak self] in self?.fleet.checkingManagerRelease == false }) { self.fleet.checkManagerUpdates() }
@@ -115,7 +136,7 @@ import EnshroudedCore
         menu.addItem(.separator())
         addLive(to: menu, title: { "Update Enshrouded Server…" }, enabled: { [weak self] in
             guard let self else { return false }
-            return !self.fleet.models.contains(where: \.busy) && self.fleet.models.contains { $0.release?.updateAvailable == true }
+            return !self.fleet.models.contains(where: \.busy) && self.fleet.models.contains { $0.releaseError == nil && $0.releaseCheckedAt != nil && $0.release?.updateAvailable == true }
         }) { self.fleet.updateAllServers() }
         menu.addItem(.separator())
         for server in fleet.configuredModels {
@@ -130,12 +151,13 @@ import EnshroudedCore
             add("Copy Admin Password", to: submenu, enabled: !server.settings.adminPassword.isEmpty) { server.copy(server.settings.adminPassword) }
             submenu.addItem(.separator())
             addLive(to: submenu, title: { server.busy ? server.operationTitle : "Start Server" }, enabled: { server.canEdit }) { server.run("start") }
-            addLive(to: submenu, title: { "Stop Server (Save & Stop)" }, enabled: { server.state == "RUNNING" && !server.busy }) { server.run("stop") }
+            addLive(to: submenu, title: { server.activeAction == "stop" ? "Saving & Stopping…" : "Stop Server (Save & Stop)" }, enabled: { ["RUNNING", "RECOVERING"].contains(server.state) && !server.busy }) { server.run("stop") }
             addLive(to: submenu, title: { "Start Server at Login" }, enabled: { !server.busy || server.activeAction == "stop" }, checked: { server.automation.startAtLogin }) {
                 var value = server.automation; value.startAtLogin.toggle(); server.saveAutomation(value)
             }
             addLive(to: submenu, title: { "Delete Server…" }, enabled: { [weak self] in self?.fleet.canChangeProfiles == true && !server.busy }) { self.fleet.deleteServer(server) }
             add("Server Management…", to: submenu) { self.open(server) }
+            addLive(to: submenu, title: { "Show Progress…" }, enabled: { server.busy || server.serverProgress != nil }) { ServerProgressWindow.show(model: server) }
         }
         menu.addItem(.separator())
         add("Enshrouded Server Build \(fleet.selected.engine.installedManifest ?? "Unavailable")", to: menu)
@@ -146,8 +168,11 @@ import EnshroudedCore
             for server in self.fleet.models { var value = server.automation; value.automaticUpdates = !automatic; server.saveAutomation(value) }
         }
         menu.addItem(.separator())
-        addLive(to: menu, title: { "New Server…" }, enabled: { [weak self] in self?.fleet.canChangeProfiles == true }) { self.fleet.showNewServer = true; self.showManagement(); NSApp.activate(ignoringOtherApps: true) }
+        addLive(to: menu, title: { "New Server…" }, enabled: { [weak self] in self?.fleet.canChangeProfiles == true }) { EditorWindows.showNew(self.fleet) }
         menu.addItem(.separator())
+        addLive(to: menu, title: { "Open Manager at Login" }, enabled: { true }, checked: { [weak self] in self?.fleet.managerAtLogin == true }) {
+            self.fleet.setManagerAtLogin(!self.fleet.managerAtLogin)
+        }
         addLive(to: menu, title: { "Uninstall Server Files…" }, enabled: { [weak self] in self?.fleet.models.contains(where: \.busy) == false }) { self.fleet.uninstallServerFiles() }
         addLive(to: menu, title: { "Quit Manager (Servers Keep Running)" }, enabled: { [weak self] in self?.fleet.models.contains(where: \.busy) == false }) { NSApp.terminate(nil) }
     }

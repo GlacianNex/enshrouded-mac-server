@@ -68,4 +68,58 @@ final class LogSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.text, report)
         XCTAssertEqual(snapshot.identityFor(relativeEnd: snapshot.parsed.statsReportEnd), "\(snapshot.fileIdentifier):\(text.utf8.count)")
     }
+    func testNativePrefixParsesStatsAndExactPeerDelimiter() {
+        let text = "[I 01:02:03,250] " + stats + "[I 01:02:04,000] -------------- Session ----------------\n[I 01:02:04,001] m#1(129): lost 0, ping 20 ms, OperatingNormally\n[I 01:02:04,002] ---------------------------------------\n"
+        let parsed = LogSnapshot.parse(text, completeLinesOnly: true)
+        XCTAssertEqual(parsed.updateRate, 50)
+        XCTAssertEqual(parsed.statsElapsed, 3723.25)
+        XCTAssertEqual(parsed.lastElapsed, 3724.002)
+        XCTAssertEqual(parsed.peers.first?.ping, 20)
+        XCTAssertEqual(parsed.peerReportEnd, text.utf8.count)
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let snapshot = LogTailSnapshot(text: text, fileIdentifier: "test", startOffset: 0, fileSize: UInt64(text.utf8.count), modifiedAt: now.addingTimeInterval(-300))
+        XCTAssertEqual(snapshot.peerReportDate(at: now), now.addingTimeInterval(-300))
+        XCTAssertEqual(parsed.peerElapsed, 3724.002)
+    }
+    func testReportDateUsesElapsedDeltaAndRejectsUnknownOrInconsistentClocks() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        func snapshot(_ ending: String, modifiedAt: Date? = nil) -> LogTailSnapshot {
+            let text = "[I 01:00:00,000] " + stats + ending
+            return LogTailSnapshot(text: text, fileIdentifier: "test", startOffset: 0, fileSize: UInt64(text.utf8.count), modifiedAt: modifiedAt)
+        }
+        XCTAssertEqual(snapshot("[I 01:05:00,000] event\n", modifiedAt: now).reportDate(at: now), now.addingTimeInterval(-300))
+        XCTAssertNil(snapshot("[I 01:05:00,000] event\n").reportDate(at: now))
+        XCTAssertNil(snapshot("[I 00:00:00,000] restarted\n", modifiedAt: now).reportDate(at: now))
+        XCTAssertNil(snapshot("[I 999:00:00,000] invalid\n", modifiedAt: now).reportDate(at: now))
+        XCTAssertNil(snapshot("", modifiedAt: now.addingTimeInterval(1)).reportDate(at: now))
+        let plain = LogTailSnapshot(text: stats, fileIdentifier: "test", startOffset: 0, fileSize: UInt64(stats.utf8.count), modifiedAt: now)
+        XCTAssertNil(plain.reportDate(at: now))
+    }
+    func testIncompleteNativeLineDoesNotAdvanceElapsedClock() {
+        let parsed = LogSnapshot.parse("[I 00:01:00,000] " + stats + "[I 00:09:00,000] incomplete", completeLinesOnly: true)
+        XCTAssertEqual(parsed.lastElapsed, 60)
+        XCTAssertEqual(parsed.statsElapsed, 60)
+    }
+    func testNativeLogPreferenceFallsBackWithoutTimestampedContent() throws {
+        let root = try fixture().deletingLastPathComponent()
+        let engine = Engine(home: root, resources: root)
+        let stdout = engine.data.appendingPathComponent("logs/server.log")
+        let native = engine.data.appendingPathComponent("server/logs/enshrouded_server.log")
+        for file in [stdout, native] { try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true) }
+        try Data(stats.utf8).write(to: stdout)
+        XCTAssertEqual(engine.logTailSnapshot().text, stats)
+        XCTAssertEqual(engine.serverLogFolder, stdout.deletingLastPathComponent())
+        try Data().write(to: native)
+        XCTAssertEqual(engine.logTailSnapshot().text, stats)
+        try Data("banner only\n".utf8).write(to: native)
+        XCTAssertEqual(engine.logTailSnapshot().text, stats)
+        let timestamped = "[I 00:01:00,000] " + stats
+        try Data(timestamped.utf8).write(to: native)
+        let snapshot = engine.logTailSnapshot()
+        XCTAssertEqual(snapshot.text, timestamped)
+        XCTAssertEqual(engine.serverLogFolder, native.deletingLastPathComponent())
+        XCTAssertNotNil(snapshot.modifiedAt)
+        XCTAssertNotNil(snapshot.reportDate())
+    }
+
 }
