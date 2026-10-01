@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.17 (Candidate)
+
+- Build the bundled VM launcher for macOS 14+, independent of the developer Mac's SDK version; invalidate cached launchers when the build recipe changes.
+- Reject release bundles with missing runtime files, newer minimum macOS requirements, missing Apple Silicon binaries or external library dependencies.
+- Document the complete installation dependency inventory and clarify that Linux build tools are installed inside the VM, with no Xcode or Command Line Tools required on the Mac.
+- Remove deleted servers from an open menu and reject stale Delete Server actions before showing a confirmation.
+- Rename the log viewer's Done button to Close.
+- Keep Delete Server on the main action row and remove the Checked timestamp; cover delete-checkbox behavior with management closed or minimized.
+
 ## 0.1.16 (Candidate)
 
 - Show start/stop status in Server Management without automatically opening progress windows.

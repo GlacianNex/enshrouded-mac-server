@@ -16,7 +16,8 @@ fetch() {
 }
 mkdir -p .cache .tools/lima-build
 patch_hash=$(shasum -a 256 scripts/lima-udp-idle.patch | cut -d' ' -f1)
-artifact="$PWD/.tools/lima-build/limactl-$patch_hash"
+recipe_hash=$(shasum -a 256 scripts/patch-lima.sh | cut -d' ' -f1)
+artifact="$PWD/.tools/lima-build/limactl-$patch_hash-$recipe_hash"
 if ! test -f "$artifact"; then
   fetch "https://go.dev/dl/go1.25.7.darwin-$arch.tar.gz" ".cache/go1.25.7-$arch.tar.gz" "$go_sha"
   fetch https://github.com/lima-vm/lima/archive/refs/tags/v2.2.0.tar.gz .cache/lima-source-v2.2.0.tar.gz cdba3804df7d8c00a2af674a3fe0b24c19673a0e846e5f75ac9badf227ce52f5
@@ -29,6 +30,10 @@ if ! test -f "$artifact"; then
   (
     cd "$stage/lima"
     export GOTOOLCHAIN=local CGO_ENABLED=1
+    # A new build SDK must not silently raise the app's minimum macOS version.
+    export MACOSX_DEPLOYMENT_TARGET=14.0
+    export CGO_CFLAGS='-O2 -g -mmacosx-version-min=14.0'
+    export CGO_LDFLAGS='-O2 -g -mmacosx-version-min=14.0'
     "$stage/go/bin/go" test -race ./pkg/portfwd
     GOOS=darwin GOARCH=arm64 "$stage/go/bin/go" build -trimpath \
       -ldflags='-s -w -X github.com/lima-vm/lima/v2/pkg/version.Version=v2.2.0-esm.1' \

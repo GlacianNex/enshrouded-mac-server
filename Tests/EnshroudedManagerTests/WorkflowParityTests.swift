@@ -6,6 +6,100 @@ import EnshroudedCore
 @testable import EnshroudedManager
 
 final class WorkflowParityTests: XCTestCase {
+    @MainActor func testMenuDeleteCheckboxDoesNotOpenOrRestoreManagement() async throws {
+        try await withFixture { _ in
+            let fleet = FleetModel(), delegate = ManagerAppDelegate()
+            delegate.start(fleet: fleet, afterUpdate: true)
+            defer {
+                delegate.managementWindow?.close()
+                fleet.statusMenu?.invalidate()
+                fleet.models.forEach { $0.retire() }
+            }
+            try await settled(fleet.selected)
+            for minimized in [false, true] {
+                if minimized { delegate.showManagement(); delegate.managementWindow?.miniaturize(nil) }
+                let status = try XCTUnwrap(fleet.statusMenu)
+                status.menuNeedsUpdate(status.menu)
+                let submenu = try XCTUnwrap(status.menu.items.first { $0.submenu != nil }?.submenu)
+                let delete = try XCTUnwrap(submenu.items.first { $0.title == "Delete Server…" })
+                var inspected = false
+                let timer = Timer(timeInterval: 0.05, repeats: false) { _ in
+                    MainActor.assumeIsolated {
+                        defer { NSApp.abortModal() }
+                        guard let dialog = NSApp.modalWindow else { XCTFail("Delete confirmation did not open"); return }
+                        func buttons(_ view: NSView) -> [NSButton] {
+                            (view as? NSButton).map { [$0] } ?? view.subviews.flatMap(buttons)
+                        }
+                        guard let checkbox = dialog.contentView.flatMap({ buttons($0).first { $0.title == "Also delete game data and backups" } }) else {
+                            XCTFail("Missing delete-data checkbox"); return
+                        }
+                        checkbox.performClick(nil)
+                        XCTAssertEqual(checkbox.state, .on)
+                        XCTAssertTrue(NSApp.modalWindow === dialog)
+                        if minimized { XCTAssertTrue(delegate.managementWindow?.isMiniaturized == true) }
+                        else { XCTAssertNil(delegate.managementWindow) }
+                        inspected = true
+                    }
+                }
+                RunLoop.main.add(timer, forMode: .common)
+                _ = NSApp.sendAction(try XCTUnwrap(delete.action), to: delete.target, from: delete)
+                timer.invalidate()
+                XCTAssertTrue(inspected)
+                XCTAssertEqual(try fleet.store.load().count, 1, "Cancelling must keep the server")
+            }
+        }
+    }
+    @MainActor func testManagementDeleteActionIsInMainButtonRow() async throws {
+        try await withFixture { home in
+            let model = Model(homeOverride: home)
+            defer { model.retire() }
+            try await settled(model)
+            model.lastCheck = Date()
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 860), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            var deleteClicks = 0
+            let host = NSHostingView(rootView: ManagementView(model: model, removeServer: { deleteClicks += 1 }))
+            window.contentView = host; window.makeKeyAndOrderFront(nil)
+            defer { window.close() }
+            try await Task.sleep(for: .milliseconds(200))
+            // At the fixed 640x860 content size, the main action row is 52
+            // points above the bottom. The old second-row button misses this click.
+            for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                let event = try XCTUnwrap(NSEvent.mouseEvent(with: type, location: NSPoint(x: 570, y: 52), modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+                NSApp.postEvent(event, atStart: false)
+            }
+            let deadline = Date().addingTimeInterval(1)
+            InstallerEventLoop.wait { deleteClicks > 0 || Date() >= deadline }
+            XCTAssertEqual(deleteClicks, 1)
+
+        }
+    }
+    @MainActor func testDeletedServerDisappearsFromOpenMenu() async throws {
+        try await withFixture { home in
+            let fleet = FleetModel()
+            defer { fleet.models.forEach { $0.retire() } }
+            let server = fleet.selected
+            try await settled(server)
+            server.state = "RUNNING"
+            XCTAssertTrue(fleet.canDeleteServer(server))
+            let status = StatusMenu(fleet: fleet, showManagement: {})
+            defer { status.invalidate() }
+            status.menuNeedsUpdate(status.menu)
+            let row = try XCTUnwrap(status.menu.items.first { $0.submenu != nil })
+            status.menuWillOpen(status.menu)
+            status.refreshStatus()
+            XCTAssertTrue(status.menu.items.contains { $0 === row }, "Normal refresh must preserve hovered rows")
+            // Deletion removes registration before retiring the in-memory model.
+            try fleet.store.save([])
+            server.retire()
+            XCTAssertFalse(fleet.canDeleteServer(server))
+            fleet.deleteServer(server) // A stale action must return without a modal.
+            status.refreshStatus()
+            XCTAssertFalse(status.menu.items.contains { $0 === row })
+            XCTAssertFalse(status.menu.items.contains { $0.submenu != nil })
+            status.menuDidClose(status.menu)
+        }
+    }
     @MainActor private func withFixture(_ body: (URL) async throws -> Void) async throws {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

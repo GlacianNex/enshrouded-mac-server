@@ -6,7 +6,7 @@ Host Enshrouded worlds for your friends from your Mac. This native macOS menu ba
 
 Requires **Apple Silicon and macOS 14 Sonoma or later**, internet access for setup, and **30 GB of free space**. Each server environment allocates 8 GB of RAM and four CPU cores; a Mac with at least 16 GB of RAM leaves room for macOS. The release is Developer ID signed and Apple-notarized.
 
-No separate Steam client, Steam login, CrossOver, Wine, Docker, Homebrew, or Rosetta installation is needed. The manager automatically downloads its free compatibility tools and the official server during setup. The game server runs through a compatibility environment; it is not a native Mac port.
+No separate Xcode, Command Line Tools, Python, Steam client, Steam login, CrossOver, Wine, Docker, Homebrew, or Rosetta installation is needed. The manager automatically downloads its free compatibility tools and the official server during setup. Compilers and Linux libraries are installed inside the server's VM, not on macOS. The game server runs through a compatibility environment; it is not a native Mac port. See the [installation dependency audit](docs/INSTALLATION-DEPENDENCIES.md) for the full inventory and verification limits.
 
 ## What It Does
 

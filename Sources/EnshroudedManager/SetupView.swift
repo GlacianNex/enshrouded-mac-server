@@ -191,7 +191,7 @@ struct SetupDownloadInfo: View {
                     ForEach(SetupStep.allCases.filter { $0 != .configure && $0 != .start }, id: \.self) { step in
                         Text("\(step.title): \(step.downloadDescription)").font(.caption)
                     }
-                    Text("Lima tools are included. Cached downloads are reused. Download size varies with the latest server release and required packages; 30 GB includes extraction and update space.").font(.caption).foregroundStyle(.secondary)
+                    Text("No Xcode, Command Line Tools, Homebrew, Steam, Wine or Rosetta installation is needed. Lima is included; setup installs the other tools inside the server VM. Cached downloads are reused. Download size varies; 30 GB includes extraction and update space.").font(.caption).foregroundStyle(.secondary)
                 }.padding(.top, 6)
             }.disclosureGroupStyle(FullRowDisclosureStyle())
         }

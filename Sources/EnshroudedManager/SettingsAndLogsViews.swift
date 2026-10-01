@@ -160,7 +160,7 @@ struct LogsView: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack { Text(updateLog == nil ? "Server Logs" : "Manager Update Log").font(.title2.bold()); Spacer(); Button("Done", action: close) }
+            HStack { Text(updateLog == nil ? "Server Logs" : "Manager Update Log").font(.title2.bold()); Spacer(); Button("Close", action: close) }
             if updateLog == nil {
                 Picker("Log", selection: $selected) { Text("Server").tag("Server"); Text("Manager Activity").tag("Manager"); if showsInstallation { Text("Installation").tag("Setup") } }.pickerStyle(.segmented)
             }

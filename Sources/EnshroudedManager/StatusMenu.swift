@@ -9,6 +9,7 @@ import EnshroudedCore
     private var actions: [StatusMenuAction] = []
     private var liveRows: [() -> Void] = []
     private var tracking = false
+    private var displayedServers: [ObjectIdentifier] = []
     private var timer: Timer?
 
     init(fleet: FleetModel, showManagement: @escaping () -> Void) {
@@ -29,6 +30,9 @@ import EnshroudedCore
         NSStatusBar.system.removeStatusItem(item)
     }
     func refreshStatus() {
+        // State updates preserve hovered rows, but removed/replaced profiles must
+        // release their rows and actions even while the menu is open.
+        if displayedServers != fleet.configuredModels.map(ObjectIdentifier.init) { rebuild() }
         for update in liveRows { update() }
         item.button?.image = MenuBranding.image(running: fleet.models.contains { $0.state == "RUNNING" }, busy: fleet.models.contains { $0.busy || $0.state == "RECOVERING" })
         item.button?.title = " Enshrouded · \(fleet.menuValue)"
@@ -116,6 +120,8 @@ import EnshroudedCore
         showManagement(); NSApp.activate(ignoringOtherApps: true)
     }
     private func rebuild() {
+        let servers = fleet.configuredModels
+        displayedServers = servers.map(ObjectIdentifier.init)
         menu.removeAllItems(); actions.removeAll(); liveRows.removeAll()
         let experimental = fleet.selected.build.experimental
         addLive(to: menu, title: { [weak self] in
@@ -148,7 +154,7 @@ import EnshroudedCore
             return !self.fleet.models.contains(where: \.busy) && self.fleet.models.contains { $0.releaseError == nil && $0.releaseCheckedAt != nil && $0.release?.updateAvailable == true }
         }) { self.fleet.updateAllServers() }
         menu.addItem(.separator())
-        for server in fleet.configuredModels {
+        for server in servers {
             let submenu = NSMenu(); submenu.autoenablesItems = false
             let row = NSMenuItem(title: server.menuTitle, action: nil, keyEquivalent: "")
             row.submenu = submenu; menu.addItem(row)
@@ -163,7 +169,7 @@ import EnshroudedCore
             addLive(to: submenu, title: { "Start Server at Login" }, enabled: { !server.busy || server.activeAction == "stop" }, checked: { server.automation.startAtLogin }) {
                 var value = server.automation; value.startAtLogin.toggle(); server.saveAutomation(value)
             }
-            addLive(to: submenu, title: { "Delete Server…" }, enabled: { [weak self] in self?.fleet.canChangeProfiles == true && !server.busy }) { self.fleet.deleteServer(server) }
+            addLive(to: submenu, title: { "Delete Server…" }, enabled: { [weak self] in self?.fleet.canDeleteServer(server) == true }) { self.fleet.deleteServer(server) }
             add("Server Management…", to: submenu) { self.open(server) }
         }
         menu.addItem(.separator())

@@ -19,7 +19,7 @@ public enum SetupStep: String, CaseIterable, Codable {
         switch self {
         case .environment: return "Ubuntu 24.04 ARM64 image from Canonical; runs in a private VM."
         case .packages: return "Linux libraries and build tools from Ubuntu’s package repositories."
-        case .box64: return "Box64 0.4.4 from GitHub; built locally for Apple Silicon."
+        case .box64: return "Box64 0.4.4 from GitHub; built inside the server VM."
         case .wine: return "Wine 11.18 from GitHub; runs the Windows server inside the VM."
         case .downloader: return "DepotDownloader 3.4.0 from GitHub; downloads official server files."
         case .server: return "Latest public dedicated server from Valve (Steam app 2278520)."

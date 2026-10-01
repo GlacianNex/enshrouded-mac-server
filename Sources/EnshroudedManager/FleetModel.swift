@@ -314,10 +314,14 @@ extension FleetModel {
         }
     }
     func removeSelectedServer() { deleteServer(selected) }
+    func canDeleteServer(_ model: Model) -> Bool {
+        canChangeProfiles && !model.busy && configuredModels.contains { $0 === model }
+    }
     func deleteServer(_ model: Model) {
-        guard canChangeProfiles, !model.busy else { return }
+        guard canDeleteServer(model) else { return }
         let alert = ServerFilePrompts.deletion(name: model.name)
         guard alert.runModal() == .alertFirstButtonReturn else { return }
+        guard canDeleteServer(model) else { return }
         let deleteGameData = (alert.accessoryView as? NSButton)?.state == .on
         model.busy = true; model.serverProgress = nil; model.operationTitle = "Deleting server…"
         let engine = model.engine, store = store
@@ -332,6 +336,7 @@ extension FleetModel {
                     models = [Model(homeOverride: store.registry.deletingLastPathComponent().appendingPathComponent("unconfigured"), automaticStartup: false, sharedDownloads: sharedDownloads)]
                 }
                 selectedID = models[0].engine.home.path; observe()
+                statusMenu?.refreshStatus()
                 if ProcessInfo.processInfo.environment["ESM_HOME"] == nil {
                     if let first = result.remaining.first { UserDefaults.standard.set(first.home, forKey: "serverHome") }
                     else { UserDefaults.standard.removeObject(forKey: "serverHome") }

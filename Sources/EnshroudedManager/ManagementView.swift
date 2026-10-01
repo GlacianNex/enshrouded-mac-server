@@ -51,12 +51,12 @@ struct ManagementView: View {
                 Button("Open Log") { LogsWindowController.show(model: model) }
                 Button("Logs Folder") { NSWorkspace.shared.open(model.engine.serverLogFolder) }
                 Button("Open Server Folder") { NSWorkspace.shared.open(model.engine.data.appendingPathComponent("server")) }
+                Spacer(minLength: 0)
+                Button("Delete Server…", action: removeServer).disabled(model.busy)
             }.font(.system(size: 11)).controlSize(.small)
             HStack {
                 Text(model.busy ? model.operationTitle : model.automationMessage).lineLimit(1)
                 Spacer()
-                Button("Delete Server…", action: removeServer).disabled(model.busy)
-                if let check = model.lastCheck { Text("Checked \(check, style: .time)") }
             }.font(.system(size: 11)).foregroundStyle(.secondary).frame(height: 16)
         }.padding(16).frame(width: 640, height: 860)
         .background(ManagementWindowTitle(name: model.name))

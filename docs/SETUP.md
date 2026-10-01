@@ -4,9 +4,9 @@
 
 Download the app from [Latest Release](https://github.com/GlacianNex/enshrouded-mac-server/releases/latest), unzip it into a fresh folder, and open it. Choose **Install & Open**, then **Set Up Server**. Enter a name and different player/admin passwords of at least eight characters. Choose a world to import or create a new one.
 
-Setup automatically downloads Ubuntu, the compatibility tools, and the latest public dedicated server. There is no separate Wine, Steam, or Homebrew installation. First setup requires internet and at least 30 GB free disk space; each server allocates 8 GB RAM, four CPU cores, and a 40 GB virtual disk. Allow more disk space as backups accumulate.
+Setup automatically downloads Ubuntu, the compatibility tools, and the latest public dedicated server. There is no separate Xcode, Command Line Tools, Python, Wine, Steam, Homebrew or Rosetta installation. Build tools and Linux libraries are installed inside the private VM. First setup requires an Apple Silicon Mac running macOS 14 or later, internet and at least 30 GB free disk space; each server allocates 8 GB RAM, four CPU cores, and a 40 GB virtual disk. Allow more disk space as backups accumulate. See [Installation Dependencies](INSTALLATION-DEPENDENCIES.md) for the complete inventory and verification limits.
 
-Leave **Start the server when setup finishes** enabled to start immediately. Setup progress appears in Manager Activity.
+Leave **Start the server when setup finishes** enabled to start immediately. Setup progress appears in Server Management, with detailed output in the log viewer's Installation tab while setup is pending.
 
 ## Internet Hosting
 
