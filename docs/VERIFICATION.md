@@ -1,5 +1,16 @@
 # Verification
 
+## Candidate 0.1.16
+
+Manual-install artifact: `dist/Server-Workflow-0.1.16-261001.1416.37/Enshrouded Server Manager.app`. Source commit: `7dbe83b`. Developer ID signing, Apple notarization, stapling, strict signature verification, Gatekeeper, pre-distribution checks and both ZIP extraction checks passed. The copied candidate also passed signature, stapling and distribution checks. No public release was created, and the installed app, production servers and user caches were not changed.
+
+- Server operations show their stage, elapsed time and available percentage directly in Server Management. Start/stop no longer open progress windows; Show Progress and Uninstall Server Files have been removed. An isolated native app verified inline startup and failure status without a popup, and a layout fitting the management window.
+- Installation logs are available while installation is pending, running or failed. Successful installation removes that tab and switches an open viewer to Server. Regression tests exercise the rendered viewer, refresh, retry and completion; the isolated installed-server viewer showed only Server and Manager Activity.
+- Startup uses a shared cross-process lock through VM startup and game readiness. A waiting server reports Waiting to Start, then proceeds when the active start succeeds or fails. Tests cover waiting, failure release, timeout, linked-lock rejection and the actual Engine entry point. The user's exact connection-refused failure was not reproduced; serial startup is the selected mitigation, not a proven diagnosis of its network cause. No parallel production VM start was performed.
+- Delete Server removes the entire per-server installation and VM. Its unchecked checkbox says “Also delete game data and backups.” Leaving it unchecked archives that data before removal. Tests cover both choices, other-server preservation, registry-failure rollback, unsafe paths, shutdown failure and explicit cleanup-failure reporting. The native dialog was inspected without deleting a production server.
+- Clear Download Cache asks for confirmation and clears reusable shared downloads, legacy per-server host download caches, downloaded manager updates and URLSession cached responses. Installed server files, VMs, settings, game data and backups remain intact. Tests verify cache removal and installed-data preservation; existing VM working files are not purged.
+- Full local suite: 217 Swift tests, zero failures, one opt-in large-download test skipped. [GitHub CI](https://github.com/GlacianNex/enshrouded-mac-server/actions/runs/36875094296) passed script validation, unit tests, the clean Apple Silicon build and artifact upload. A fresh full installation and a second-Mac install were not repeated.
+
 ## Candidate 0.1.15
 
 Manual-install artifact: `dist/Startup-Menu-Fix-0.1.15-260930.1729.21/Enshrouded Server Manager.app`. Source commit: `588a6ef`. Developer ID signing, Apple notarization, stapling, strict signature verification, Gatekeeper, pre-distribution checks, and both ZIP extraction checks passed. No public release or changes to the installed application or running servers. [GitHub CI](https://github.com/GlacianNex/enshrouded-mac-server/actions/runs/36751699025) passed script validation, unit tests, the clean Apple Silicon build and artifact upload.
