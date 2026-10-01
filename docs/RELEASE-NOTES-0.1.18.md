@@ -34,7 +34,7 @@ Requires **Apple Silicon, macOS 14 or later, internet and at least 30 GB free sp
 
 ## Verification and Limits
 
-Release validation and exact build results are recorded in [Verification](VERIFICATION.md). The dependency audit exercised a fresh isolated Ubuntu environment with host developer tools blocked. Earlier isolated tests cover setup, updates, deletion, cache preservation, menus and window lifecycle; the user also verified real gameplay on Apple Silicon.
+**221 Swift tests and 13 Python tests passed**, with one optional large-download test skipped. The Developer ID signed app is Apple-notarized and stapled; both ZIP extraction methods passed signature and Gatekeeper checks. GitHub CI passed the clean build and tests. Exact results are recorded in [Verification](VERIFICATION.md). The dependency audit exercised a fresh isolated Ubuntu environment with host developer tools blocked. Earlier isolated tests cover setup, updates, deletion, cache preservation, menus and window lifecycle; the user also verified real gameplay on Apple Silicon.
 
 Full installation on a separate fresh Mac and end-to-end hosting on older supported macOS releases remain unverified. Sustained multiplayer load, real login/sleep recovery and concurrent live-server scenarios are not fully covered. The reported delete-checkbox window behavior was not reproduced; it is not claimed resolved. Server-speed samples depend on the game’s irregular reports. Live time/weather/spawn commands are not supported.
 
