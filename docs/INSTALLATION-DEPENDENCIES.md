@@ -39,6 +39,8 @@ The VM uses Apple's VZ driver, VirtioFS mounts and Lima networking. Containerd a
 
 Ubuntu, compatibility-component and game download progress appears during installation. Compilation and extraction run locally in the VM; lack of network traffic during those stages is expected. Exact transitive package inventories belong to each VM's dpkg database rather than a fixed download-size promise.
 
+The currently installed server executable and Steam DLLs were also inspected for PE imports. They import Windows system DLLs implemented by Wine and the shipped Steam DLLs; no external Visual C++ runtime appeared in those import tables. Valve includes Visual C++ redistributable installers in `_CommonRedist`, but the current setup does not run them and users should not install Windows redistributables on macOS. This is evidence for the inspected server build, not a guarantee about future Valve builds or every dynamically loaded DLL.
+
 ## Storage and Permissions
 
 The signed manager and Lima stay in the app bundle. Each registered server has an independent home directory, normally `~/Library/ESM/<id>/` for new profiles, with its own VM disk under `lima/engine/`, runtime helpers under `runtime/`, and game installation/configuration/saves/backups under `data/`. The original legacy server can use a different configured home. Wine, Box64, compilers and Linux packages live in `/opt/esm` and system directories inside that server's VM disk.
