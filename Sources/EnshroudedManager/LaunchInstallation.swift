@@ -7,7 +7,7 @@ import EnshroudedCore
     @MainActor static func main() {
         let arguments = CommandLine.arguments
         if arguments.count == 3, ["--hosting-guard", "--start-at-login"].contains(arguments[1]) {
-            let engine = Engine(home: URL(fileURLWithPath: arguments[2]), resources: ProcessInfo.processInfo.environment["ESM_RESOURCES"].map { URL(fileURLWithPath: $0) } ?? Bundle.main.resourceURL!)
+            let engine = Engine(home: URL(fileURLWithPath: arguments[2]), resources: ProcessInfo.processInfo.environment["ESM_RESOURCES"].map { URL(fileURLWithPath: $0) } ?? Bundle.main.resourceURL!, sharedDownloads: FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Enshrouded Manager/downloads"))
             do {
                 if arguments[1] == "--hosting-guard" { try HostingGuard.run(engine: engine) }
                 else if engine.loadAutomation().startAtLogin {

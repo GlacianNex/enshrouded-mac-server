@@ -251,7 +251,7 @@ import EnshroudedCore
             if setup { try? engine.setupLogEngine.appendActivity(text) }
         }
     }
-    func run(_ action: String, showProgress: Bool = true, completion: ((Bool) -> Void)? = nil) {
+    func run(_ action: String, completion: ((Bool) -> Void)? = nil) {
         let titles = ["start": "Starting…", "stop": "Saving & stopping…", "restart": "Restarting…", "update": "Updating server…", "install": "Setting up server…", "shutdown": "Shutting down…"]
         operation(titles[action] ?? action.capitalized, action: action, work: { engine in
             try engine.perform(action) { chunk in Task { @MainActor in
@@ -259,16 +259,19 @@ import EnshroudedCore
                 self.serverProgress?.consume(chunk)
                 if chunk.hasPrefix("Saving and stopping") { self.operationTitle = "Saving & stopping…" }
                 if chunk.hasPrefix("Backing up and updating") { self.operationTitle = "Updating server…" }
+                if chunk.hasPrefix("Waiting for another server to finish starting") { self.operationTitle = "Waiting to start…" }
                 if chunk.hasPrefix("Starting server") { self.operationTitle = "Starting…" }
             } }
         }, completion: completion)
-        if showProgress { ServerProgressWindow.show(model: self) }
     }
     func save(_ value: ServerSettings) { operation("Save settings") { try $0.saveSettings(value) } }
     func backup(_ name: String) { operation("Create backup") { try $0.createBackup(name: name) } }
     func restore(_ id: String) { operation("Restore backup") { try $0.restoreBackup(id: id) } }
     func copy(_ value: String) { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(value, forType: .string) }
-    func retire() {
+    func retire(forgettingPreferences: Bool = false) {
+        if forgettingPreferences {
+            preferences.removePersistentDomain(forName: "com.glaciannex.enshrouded-manager.\(engine.home.path.data(using: .utf8)!.base64EncodedString())")
+        }
         timer?.invalidate(); timer = nil
         if assertion != 0 { IOPMAssertionRelease(assertion); assertion = 0 }
     }
@@ -324,7 +327,7 @@ extension Model {
             let shouldResume = FileManager.default.fileExists(atPath: resume.path)
             if state == "RUNNING" && shouldResume { try? FileManager.default.removeItem(at: resume) }
             if stopped && shouldResume {
-                run("start", showProgress: false) { success in
+                run("start") { success in
                     if success { try? FileManager.default.removeItem(at: resume) }
                 }
                 return

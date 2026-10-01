@@ -130,9 +130,16 @@ struct SettingsView: View {
         }
     }
 }
+struct ServerLogsView: View {
+    @ObservedObject var model: Model
+    var close: () -> Void
+    var body: some View { LogsView(model: model, close: close) }
+}
+
 struct LogsView: View {
     private let engine: Engine?
     private let updateLog: URL?
+    let showsInstallation: Bool
     @State private var selected = "Server"
     @State private var filter = ""
     @State private var autoScroll = true
@@ -144,17 +151,18 @@ struct LogsView: View {
     var close: () -> Void
     init(model: Model, close: @escaping () -> Void) {
         engine = model.engine; updateLog = nil; self.close = close
-        _selected = State(initialValue: model.installationPending || model.setupProgress != nil ? "Setup" : "Server")
+        showsInstallation = model.installationPending
+        _selected = State(initialValue: showsInstallation ? "Setup" : "Server")
     }
     init(updateLog: URL, close: @escaping () -> Void) {
-        engine = nil; self.updateLog = updateLog; self.close = close
+        engine = nil; self.updateLog = updateLog; self.close = close; showsInstallation = false
         _selected = State(initialValue: "Manager")
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack { Text(updateLog == nil ? "Server Logs" : "Manager Update Log").font(.title2.bold()); Spacer(); Button("Done", action: close) }
             if updateLog == nil {
-                Picker("Log", selection: $selected) { Text("Server").tag("Server"); Text("Manager Activity").tag("Manager"); Text("Installation").tag("Setup") }.pickerStyle(.segmented)
+                Picker("Log", selection: $selected) { Text("Server").tag("Server"); Text("Manager Activity").tag("Manager"); if showsInstallation { Text("Installation").tag("Setup") } }.pickerStyle(.segmented)
             }
             TextField("Filter log lines", text: $filter)
             HStack(spacing: 16) {
@@ -175,6 +183,11 @@ struct LogsView: View {
                 }
             }
         }.padding(20).frame(minWidth: 620, minHeight: 400)
+        .onAppear { if showsInstallation { selected = "Setup" } }
+        .onChange(of: showsInstallation) { visible in
+            if visible { selected = "Setup" }
+            else if selected == "Setup" { selected = "Server" }
+        }
         .task {
             while !Task.isCancelled {
                 let logs = await Task.detached(priority: .utility) { () -> (String, String, String) in

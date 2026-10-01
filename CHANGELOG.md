@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.16 (Candidate)
+
+- Show start/stop status in Server Management without automatically opening progress windows.
+- Hide Installation logs after setup completes, including in an already-open log window.
+- Queue server startups so another start waits until the active startup finishes or fails; keep unrelated controls available.
+- Remove Show Progress and the global Uninstall Server Files command; display server operation steps, elapsed time and available percentages inline.
+- Delete a server's complete installation, with an unchecked option to also delete game data and backups. Preserve saved data outside the installation otherwise.
+- Confirm cache clearing and remove shared downloads, older per-server download caches and cached manager updates while preserving installed servers.
+- Add regressions for quiet lifecycle operations, changing log tabs and startup queue behavior.
+
 ## 0.1.15 (Candidate)
 
 - Treat automatic server restarts after a manager update as ordinary startup, keeping unrelated menu actions available.

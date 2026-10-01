@@ -80,4 +80,25 @@ final class SharedDownloadsTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: shared.appendingPathComponent("server/enshrouded_server.exe")), "fresh")
     }
 
+    func testClearingAllDownloadCachesPreservesInstalledServerFiles() throws {
+        let (root, engine, source, _) = try fixture()
+        let updateCache = root.appendingPathComponent("manager-updates")
+        let store = ProfileStore(registry: root.appendingPathComponent("profiles.json"))
+        try store.save([ServerProfile(id: "source", name: "Existing", home: source.path, port: 15637)])
+        let caches = [source.appendingPathComponent("cache"), engine.home.appendingPathComponent("cache"), updateCache]
+        for cache in caches {
+            try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+            try Data("download".utf8).write(to: cache.appendingPathComponent("archive"))
+        }
+        let protected = ["lima/engine/disk", "data/server/savegame/world", "data/server/enshrouded_server.exe", "data/server/enshrouded_server.json", "data/backups/world"]
+        for name in protected {
+            let file = source.appendingPathComponent(name)
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data("keep".utf8).write(to: file)
+        }
+        try engine.clearSharedDownloads(managerUpdateCache: updateCache)
+        for cache in caches { XCTAssertFalse(FileManager.default.fileExists(atPath: cache.path)) }
+        for name in protected { XCTAssertEqual(try String(contentsOf: source.appendingPathComponent(name)), "keep") }
+    }
+
 }

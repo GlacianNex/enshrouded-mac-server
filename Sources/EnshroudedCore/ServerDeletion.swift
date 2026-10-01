@@ -14,13 +14,19 @@ extension ProfileStore {
     }
 }
 
+public struct ServerDeletionResult {
+    public let remaining: [ServerProfile]
+    public let savedData: URL?
+    public let cleanupWarning: String?
+}
+
 extension Engine {
-    /// Remove one server's identity and saved state, retaining its reusable installation.
-    /// Saved data is archived outside the installation before the registry changes.
-    public func deleteServer(store: ProfileStore) throws -> [ServerProfile] {
-        try deleteServer(store: store, saveProfiles: store.save)
+    public func deleteServer(store: ProfileStore, deleteGameData: Bool = false) throws -> ServerDeletionResult {
+        try deleteServer(store: store, deleteGameData: deleteGameData, saveProfiles: store.save)
     }
-    func deleteServer(store: ProfileStore, saveProfiles: ([ServerProfile]) throws -> Void) throws -> [ServerProfile] {
+    func deleteServer(store: ProfileStore, deleteGameData: Bool = false,
+                      saveProfiles: ([ServerProfile]) throws -> Void,
+                      removeInstallation: (URL) throws -> Void = { try FileManager.default.removeItem(at: $0) }) throws -> ServerDeletionResult {
         try withOperationLock {
             let fm = FileManager.default
             var profiles = try store.load()
@@ -30,45 +36,69 @@ extension Engine {
                 throw EngineError("Server profile or folder is invalid")
             }
             let root = home.standardizedFileURL.resolvingSymlinksInPath().path
-            let archive = store.registry.deletingLastPathComponent().appendingPathComponent("deleted-server-data/" + UUID().uuidString)
-            guard !archive.standardizedFileURL.resolvingSymlinksInPath().path.hasPrefix(root + "/") else {
-                throw EngineError("Saved-data archive must be outside the server folder")
+            let userHome = fm.homeDirectoryForCurrentUser.standardizedFileURL.resolvingSymlinksInPath().path
+            guard root != userHome, root != userHome + "/Library",
+                  !resources.standardizedFileURL.resolvingSymlinksInPath().path.hasPrefix(root + "/") else {
+                throw EngineError("This folder is not safe to remove as a server installation")
             }
-            let paths = ["profile.json", "initial-settings.json", "automation.json", "resume-after-manager-update",
+            let management = store.registry.deletingLastPathComponent()
+            let archive = management.appendingPathComponent("deleted-server-data/" + UUID().uuidString)
+            let staged = management.appendingPathComponent("pending-server-deletion/" + UUID().uuidString)
+            for destination in [archive, staged] {
+                guard !destination.standardizedFileURL.resolvingSymlinksInPath().path.hasPrefix(root + "/") else {
+                    throw EngineError("Server deletion storage must be outside the server folder")
+                }
+            }
+            let paths = ["profile.json", "initial-settings.json", "automation.json",
                          "data/server/enshrouded_server.json", "data/server/savegame", "data/server/logs",
-                         "data/server/config", "data/server/appcache", "data/logs", "data/backups", "data/previous-install"]
+                         "data/server/config", "data/logs", "data/backups",
+                         "data/previous-install/savegame", "data/previous-install/enshrouded_server.json",
+                         "data/previous-install/logs", "data/previous-install/config"]
             for path in paths {
                 let url = home.appendingPathComponent(path)
-                guard url.resolvingSymlinksInPath().standardizedFileURL.path == url.standardizedFileURL.path, url.standardizedFileURL.path.hasPrefix(root + "/") else {
+                guard url.resolvingSymlinksInPath().standardizedFileURL.path == url.standardizedFileURL.path,
+                      url.standardizedFileURL.path.hasPrefix(root + "/") else {
                     throw EngineError("Cannot delete through a linked server folder")
                 }
             }
             try performLocked("shutdown", output: { _ in })
             guard ["VM_STOPPED", "NOT_INSTALLED"].contains(try status()) else { throw EngineError("The server has not stopped") }
-            try fm.createDirectory(at: archive, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-            try fm.createDirectory(at: store.retainedDirectory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-            let receipt = store.retainedDirectory.appendingPathComponent(UUID().uuidString + ".json")
+            try fm.createDirectory(at: staged.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             var moved: [String] = []
+            var stagedHome = false
             do {
-                for path in paths where fm.fileExists(atPath: home.appendingPathComponent(path).path) {
-                    let destination = archive.appendingPathComponent(path)
-                    try fm.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
-                    try fm.moveItem(at: home.appendingPathComponent(path), to: destination)
-                    moved.append(path)
+                if !deleteGameData {
+                    try fm.createDirectory(at: archive, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+                    for path in paths where fm.fileExists(atPath: home.appendingPathComponent(path).path) {
+                        let destination = archive.appendingPathComponent(path)
+                        try fm.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+                        try fm.moveItem(at: home.appendingPathComponent(path), to: destination)
+                        moved.append(path)
+                    }
+                    if !fm.fileExists(atPath: archive.appendingPathComponent("profile.json").path) {
+                        try JSONEncoder().encode(profile).write(to: archive.appendingPathComponent("profile.json"))
+                    }
                 }
-                try JSONEncoder().encode(profile).write(to: receipt, options: .atomic)
+                try fm.moveItem(at: home, to: staged); stagedHome = true
                 profiles.removeAll { $0.id == profile.id }
                 try saveProfiles(profiles)
             } catch {
                 let original = error
-                for path in moved.reversed() {
-                    do { try fm.moveItem(at: archive.appendingPathComponent(path), to: home.appendingPathComponent(path)) }
-                    catch { throw EngineError("Deletion failed. Saved data remains at \(archive.path).") }
+                do {
+                    if stagedHome { try fm.moveItem(at: staged, to: home) }
+                    for path in moved.reversed() {
+                        try fm.moveItem(at: archive.appendingPathComponent(path), to: home.appendingPathComponent(path))
+                    }
+                    if !deleteGameData { try? fm.removeItem(at: archive) }
+                } catch {
+                    throw EngineError("Deletion could not finish. Files are preserved at \(staged.path) and \(archive.path).")
                 }
-                try? fm.removeItem(at: receipt); try? fm.removeItem(at: archive)
                 throw original
             }
-            return profiles
+            var warning: String?
+            do { try removeInstallation(staged) }
+            catch { warning = "Server removed, but some files could not be deleted at \(staged.path): \(error.localizedDescription)" }
+            return ServerDeletionResult(remaining: profiles, savedData: deleteGameData ? nil : archive, cleanupWarning: warning)
         }
     }
 }

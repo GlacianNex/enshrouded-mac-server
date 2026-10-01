@@ -45,7 +45,9 @@ public struct ServerOperationProgress {
     private mutating func consumeLine(_ line: String) {
         setup.consume(line + "\n")
         let text = line.trimmingCharacters(in: .whitespaces)
-        if text.hasPrefix("Saving and stopping server") {
+        if text.hasPrefix("Waiting for another server to finish starting") {
+            stage("Waiting to Start", "Waiting for another server to finish starting…")
+        } else if text.hasPrefix("Saving and stopping server") {
             stage("Save & Stop", "Saving the world and stopping the server…")
         } else if text.hasPrefix("Backing up and updating server") {
             stage("Back Up", "Backing up the world before updating…")

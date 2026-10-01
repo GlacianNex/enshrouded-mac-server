@@ -190,7 +190,13 @@ public struct Engine {
         }
     }
 
-    func performLocked(_ action: String, output: @escaping (String) -> Void) throws {
+    func performLocked(_ action: String, startupSlotHeld: Bool = false, output: @escaping (String) -> Void) throws {
+        if action == "start" && !startupSlotHeld {
+            let root = sharedDownloads?.deletingLastPathComponent() ?? home.deletingLastPathComponent()
+            return try ServerStartupLock.run(at: root.appendingPathComponent("server-startup.lock"), output: output) {
+                try performLocked(action, startupSlotHeld: true, output: output)
+            }
+        }
         let fm = FileManager.default
         if action == "rollback" {
             try requireStoppedWorld()

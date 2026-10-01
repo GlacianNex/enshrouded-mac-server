@@ -21,7 +21,7 @@ struct ManagementView: View {
                 Spacer()
             }.padding(.horizontal, 8)
             if model.busy {
-                HStack { ProgressView().controlSize(.small); VStack(alignment: .leading) { Text(model.operationTitle).font(.headline); Text("Keep the manager open until this operation finishes.").font(.caption).foregroundStyle(.secondary) }; Spacer(); Button("Show Progress") { ServerProgressWindow.show(model: model) } }.padding(12).background(.background.secondary, in: RoundedRectangle(cornerRadius: 8))
+                ServerOperationStatusView(model: model)
             }
             if model.state == "NOT_INSTALLED" {
                 GroupBox("Set up your Enshrouded server") {
@@ -67,6 +67,38 @@ struct ManagementView: View {
         .confirmationDialog("Save and restart this server?", isPresented: $model.showRestart, titleVisibility: .visible) {
             Button("Save & Restart") { model.run("restart") }
         } message: { Text("The server must be empty because in-game restart warnings are unavailable. The manager saves, stops and starts it again.") }
+    }
+}
+
+struct ServerOperationStatusView: View {
+    @ObservedObject var model: Model
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                ProgressView().controlSize(.small)
+                Text(model.operationTitle).font(.headline)
+                Spacer()
+                if let started = model.serverProgress?.started ?? model.setupProgress?.started {
+                    Text(started, style: .timer).monospacedDigit().font(.caption)
+                }
+            }
+            Text(model.serverProgress?.message ?? model.setupProgress?.message ?? "Work continues when this window is closed.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            if let percent = model.serverProgress?.percent ?? model.setupProgress?.percent {
+                HStack {
+                    ProgressView(value: percent, total: 100)
+                    Text("\(Int(percent))%").font(.caption).monospacedDigit()
+                }
+            }
+            if let detail = model.serverProgress?.downloadDetail ?? model.setupProgress?.downloadDetail {
+                Text(detail).font(.caption).foregroundStyle(.secondary)
+            }
+            if let setup = model.setupProgress, setup.processHeartbeat != nil {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    if let detail = setup.processStatus(at: context.date) { Text(detail).font(.caption).foregroundStyle(.secondary) }
+                }
+            }
+        }.padding(12).background(.background.secondary, in: RoundedRectangle(cornerRadius: 8))
     }
 }
 

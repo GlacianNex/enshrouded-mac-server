@@ -3,6 +3,10 @@ import EnshroudedCore
 
 /// Discovery and validation only. FleetModel owns installation and server recovery.
 enum ManagerUpdater {
+    static var downloadCache: URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("EnshroudedServerManagerUpdates")
+    }
     static let endpoint = URL(string: "https://api.github.com/repos/GlacianNex/enshrouded-mac-server/releases/latest")!
     static func latest() async throws -> ManagerRelease {
         var request = URLRequest(url: endpoint)
@@ -32,8 +36,7 @@ enum ManagerUpdater {
         return try await Task.detached {
             try release.verifyDownload(Data(contentsOf: temporary, options: .mappedIfSafe))
             let files = FileManager.default
-            let root = try files.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-                .appendingPathComponent("EnshroudedServerManagerUpdates/" + UUID().uuidString)
+            let root = downloadCache.appendingPathComponent(UUID().uuidString)
             try files.createDirectory(at: root, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             do {
                 let listing = try command("/usr/bin/unzip", ["-Z1", temporary.path])

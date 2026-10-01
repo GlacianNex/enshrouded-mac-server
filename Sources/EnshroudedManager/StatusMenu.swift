@@ -165,7 +165,6 @@ import EnshroudedCore
             }
             addLive(to: submenu, title: { "Delete Server…" }, enabled: { [weak self] in self?.fleet.canChangeProfiles == true && !server.busy }) { self.fleet.deleteServer(server) }
             add("Server Management…", to: submenu) { self.open(server) }
-            addLive(to: submenu, title: { "Show Progress…" }, enabled: { server.busy || server.serverProgress != nil || server.setupProgress != nil }) { ServerProgressWindow.show(model: server) }
         }
         menu.addItem(.separator())
         add("Enshrouded Server Build \(fleet.selected.engine.installedManifest ?? "Unavailable")", to: menu)
@@ -181,8 +180,7 @@ import EnshroudedCore
         addLive(to: menu, title: { "Open Manager at Login" }, enabled: { true }, checked: { [weak self] in self?.fleet.managerAtLogin == true }) {
             self.fleet.setManagerAtLogin(!self.fleet.managerAtLogin)
         }
-        addLive(to: menu, title: { [weak self] in self?.fleet.clearingDownloads == true ? "Clearing Installation Downloads…" : "Clear Installation Downloads…" }, enabled: { [weak self] in self?.fleet.canClearDownloads == true }) { self.fleet.clearDownloadCache() }
-        addLive(to: menu, title: { "Uninstall Server Files…" }, enabled: { [weak self] in self?.fleet.models.contains(where: \.busy) == false }) { self.fleet.uninstallServerFiles() }
+        addLive(to: menu, title: { [weak self] in self?.fleet.clearingDownloads == true ? "Clearing Download Cache…" : "Clear Download Cache…" }, enabled: { [weak self] in self?.fleet.canClearDownloads == true }) { self.fleet.clearDownloadCache() }
         addLive(to: menu, title: { "Quit Manager (Servers Keep Running)" }, enabled: { [weak self] in self?.fleet.models.contains(where: \.busy) == false }) { NSApp.terminate(nil) }
     }
 }

@@ -114,13 +114,11 @@ final class WorkflowParityTests: XCTestCase {
             model.serverProgress = ServerOperationProgress(action: "start")
             EditorWindows.showSettings(model)
             LogsWindowController.show(model: model)
-            ServerProgressWindow.show(model: model)
-            let titles = ["Server Settings — " + model.name, "Server Logs — " + model.name, "Server Progress — " + model.name]
+            let titles = ["Server Settings — " + model.name, "Server Logs — " + model.name ]
             let windows = try titles.map { title in try XCTUnwrap(NSApp.windows.first { $0.isVisible && $0.title == title }) }
             defer { windows.forEach { $0.close() } }
             EditorWindows.closeSettings(model)
             LogsWindowController.close(model)
-            ServerProgressWindow.close(model)
             XCTAssertTrue(windows.allSatisfy { !$0.isVisible && $0.contentView == nil })
             let delegate = ManagerAppDelegate()
             XCTAssertFalse(delegate.applicationShouldTerminateAfterLastWindowClosed(NSApplication.shared))
@@ -128,7 +126,6 @@ final class WorkflowParityTests: XCTestCase {
             // Cleanup is idempotent after deletion removes the model from its fleet.
             EditorWindows.closeSettings(model)
             LogsWindowController.close(model)
-            ServerProgressWindow.close(model)
         }
     }
 
@@ -375,7 +372,7 @@ final class WorkflowParityTests: XCTestCase {
                 }
                 XCTFail("Installation viewer did not display " + expected)
             }
-            XCTAssertNil(previousWindow?.contentView, "Reopening logs during setup must switch away from an earlier game-log view")
+            XCTAssertTrue(previousWindow === window, "Installation selection should update in the existing window")
             try await waitFor("Configuring processor compatibility")
             XCTAssertFalse(text(window.contentView!).contains("Unrelated manager activity"))
             model.recordActivity("Setting up server failed: fixture failure\n")
@@ -385,7 +382,12 @@ final class WorkflowParityTests: XCTestCase {
             await model.flushActivity()
             try await waitFor("Retrying installation")
             XCTAssertFalse(text(window.contentView!).contains("fixture failure"))
-            model.busy = false
+            XCTAssertTrue(LogsView(model: model, close: {}).showsInstallation)
+            model.setupProgress?.finish(success: true)
+            model.state = "INSTALLED"; model.busy = false
+            XCTAssertFalse(LogsView(model: model, close: {}).showsInstallation)
+            try await waitFor("No server log yet. Start the server to create one.")
+            XCTAssertFalse(text(window.contentView!).contains("Retrying installation"))
         }
     }
 
@@ -430,13 +432,15 @@ final class WorkflowParityTests: XCTestCase {
             fleet.statusMenu = status
             status.menuNeedsUpdate(status.menu)
             let menu = status.menu
+            XCTAssertNil(menu.item(withTitle: "Uninstall Server Files…"))
             for title in ["New Server…", "Check for Manager Updates", "Open Manager at Login", "Automatically Update All Enshrouded Servers"] {
                 XCTAssertEqual(menu.item(withTitle: title)?.isEnabled, true, title)
             }
             let server = try XCTUnwrap(menu.items.first { $0.submenu != nil }?.submenu)
-            for title in ["Server Management…", "Show Progress…"] {
+            for title in ["Server Management…"] {
                 XCTAssertEqual(server.item(withTitle: title)?.isEnabled, true, title)
             }
+            XCTAssertNil(server.item(withTitle: "Show Progress…"))
             let manage = try XCTUnwrap(server.item(withTitle: "Server Management…"))
             XCTAssertTrue(NSApp.sendAction(try XCTUnwrap(manage.action), to: manage.target, from: manage))
             XCTAssertTrue(managementOpened)
@@ -444,13 +448,59 @@ final class WorkflowParityTests: XCTestCase {
             XCTAssertTrue(check.isEnabled)
             check.performClick(nil)
             XCTAssertTrue(starting.releaseCheckQueued)
-            for title in ["Uninstall Server Files…", "Clear Installation Downloads…", "Quit Manager (Servers Keep Running)"] {
+            for title in ["Clear Download Cache…", "Quit Manager (Servers Keep Running)"] {
                 XCTAssertEqual(menu.item(withTitle: title)?.isEnabled, false, title)
             }
             XCTAssertFalse(NSApp.windows.contains { $0.isVisible && $0.title == "Server Progress — " + starting.name }, "Automatic resume must remain quiet")
             try await settled(starting)
             XCTAssertTrue(FileManager.default.fileExists(atPath: resume.path), "A failed restart retains the retry marker")
+            status.menuNeedsUpdate(menu)
+            XCTAssertNil(menu.item(withTitle: "Uninstall Server Files…"))
         }
+    }
+
+    @MainActor func testStartAndStopReportInlineWithoutOpeningProgressWindows() async throws {
+        try await withFixture { home in
+            let model = Model(homeOverride: home)
+            defer { model.retire() }
+            try await settled(model)
+            for action in ["start", "stop", "restart", "shutdown"] {
+                let visible = Set(NSApp.windows.filter { $0.isVisible && $0.styleMask.contains(.titled) }.map(\.windowNumber))
+                model.run(action)
+                XCTAssertTrue(model.busy)
+                XCTAssertEqual(model.activeAction, action)
+                XCTAssertFalse(model.operationTitle.isEmpty)
+                XCTAssertFalse(model.serverProgress?.message.isEmpty ?? true)
+                XCTAssertEqual(Set(NSApp.windows.filter { $0.isVisible && $0.styleMask.contains(.titled) }.map(\.windowNumber)), visible, action + " must not open a window")
+                try await settled(model)
+                XCTAssertFalse(model.busy)
+                XCTAssertFalse(NSApp.windows.contains { $0.isVisible && $0.title == "Server Progress — " + model.name })
+            }
+        }
+    }
+
+    @MainActor func testServerUpdateReportsInlineWithoutProgressWindow() async throws {
+        try await withFixture { home in
+            let model = Model(homeOverride: home)
+            defer { model.retire() }
+            try await settled(model)
+            model.run("update")
+            XCTAssertFalse(NSApp.windows.contains { $0.isVisible && $0.title == "Server Progress — " + model.name })
+            try await settled(model)
+        }
+    }
+
+    @MainActor func testDeleteConfirmationPreservesGameDataByDefaultAndCacheExplainsScope() throws {
+        let deletion = ServerFilePrompts.deletion(name: "My Server")
+        let choice = try XCTUnwrap(deletion.accessoryView as? NSButton)
+        XCTAssertEqual(choice.title, "Also delete game data and backups")
+        XCTAssertEqual(choice.state, .off)
+        XCTAssertGreaterThan(choice.frame.width, 0)
+        XCTAssertEqual(deletion.buttons.map(\.title), ["Delete Server", "Cancel"])
+        let cache = ServerFilePrompts.clearCache()
+        XCTAssertEqual(cache.buttons.map(\.title), ["Clear Cache", "Cancel"])
+        XCTAssertTrue(cache.informativeText.contains("Existing servers, VMs, settings, game data and backups are kept"))
+        XCTAssertTrue(cache.informativeText.contains("manager updates"))
     }
 
 }

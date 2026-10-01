@@ -300,7 +300,6 @@ extension FleetModel {
                 }.value
                 for model in targets {
                     model.serverProgress = ServerOperationProgress(action: "update")
-                    ServerProgressWindow.show(model: model)
                     let engine = model.engine
                     try await Task.detached {
                         try engine.perform("update") { chunk in Task { @MainActor in model.recordActivity(chunk); model.serverProgress?.consume(chunk) } }
@@ -317,28 +316,36 @@ extension FleetModel {
     func removeSelectedServer() { deleteServer(selected) }
     func deleteServer(_ model: Model) {
         guard canChangeProfiles, !model.busy else { return }
-        let alert = NSAlert(); alert.messageText = "Delete \(model.name)?"
-        alert.informativeText = "Stops this server and removes its settings and entry. Worlds, logs and backups are archived. Downloaded files and the environment stay available for reuse."
-        alert.addButton(withTitle: "Delete Server"); alert.addButton(withTitle: "Cancel")
+        let alert = ServerFilePrompts.deletion(name: model.name)
         guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let deleteGameData = (alert.accessoryView as? NSButton)?.state == .on
         model.busy = true; model.serverProgress = nil; model.operationTitle = "Deleting server…"
         let engine = model.engine, store = store
         Task {
             do {
                 while model.polling || model.checkingRelease { try? await Task.sleep(for: .milliseconds(100)) }
                 await model.flushActivity()
-                let remaining = try await Task.detached { try engine.deleteServer(store: store) }.value
-                EditorWindows.closeSettings(model); ServerProgressWindow.close(model); LogsWindowController.close(model)
-                model.busy = false; model.retire(); models.removeAll { $0 === model }
+                let result = try await Task.detached { try engine.deleteServer(store: store, deleteGameData: deleteGameData) }.value
+                EditorWindows.closeSettings(model); LogsWindowController.close(model)
+                model.busy = false; model.retire(forgettingPreferences: true); models.removeAll { $0 === model }
                 if models.isEmpty {
                     models = [Model(homeOverride: store.registry.deletingLastPathComponent().appendingPathComponent("unconfigured"), automaticStartup: false, sharedDownloads: sharedDownloads)]
                 }
                 selectedID = models[0].engine.home.path; observe()
                 if ProcessInfo.processInfo.environment["ESM_HOME"] == nil {
-                    if let first = remaining.first { UserDefaults.standard.set(first.home, forKey: "serverHome") }
+                    if let first = result.remaining.first { UserDefaults.standard.set(first.home, forKey: "serverHome") }
                     else { UserDefaults.standard.removeObject(forKey: "serverHome") }
                     do { try LoginStartup.configure(home: engine.home, enabled: false, executable: Bundle.main.executableURL!) }
                     catch { self.error = "Server deleted, but login startup cleanup failed: " + error.localizedDescription }
+                }
+                if let warning = result.cleanupWarning { self.error = warning }
+                if let archive = result.savedData {
+                    let saved = NSAlert(); saved.messageText = "Game Data and Backups Saved"
+                    saved.informativeText = result.cleanupWarning ?? "The server installation was deleted. Your game data and backups are kept in the saved-data folder."
+                    saved.addButton(withTitle: "Done"); saved.addButton(withTitle: "Open Saved Data")
+                    if saved.runModal() == .alertSecondButtonReturn { NSWorkspace.shared.open(archive) }
+                } else if let warning = result.cleanupWarning {
+                    let alert = NSAlert(); alert.messageText = "Some Files Could Not Be Deleted"; alert.informativeText = warning; alert.runModal()
                 }
             } catch { model.error = error.localizedDescription; model.busy = false; model.refresh() }
         }
@@ -346,17 +353,16 @@ extension FleetModel {
     var canClearDownloads: Bool { !clearingDownloads && !models.contains { $0.busy } }
     func clearDownloadCache() {
         guard canClearDownloads else { return }
-        let alert = NSAlert(); alert.messageText = "Clear Installation Downloads?"
-        alert.informativeText = "Deletes shared downloads and prevents new servers from reusing older installations. The next new server downloads everything again. Existing servers, worlds and settings stay intact."
-        alert.addButton(withTitle: "Clear Downloads"); alert.addButton(withTitle: "Cancel")
+        let alert = ServerFilePrompts.clearCache()
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         clearingDownloads = true
-        let engine = selected.engine
+        let engine = selected.engine, managerUpdateCache = ManagerUpdater.downloadCache
         Task {
             let result = NSAlert()
             do {
-                try await Task.detached { try engine.clearSharedDownloads() }.value
-                result.messageText = "Installation Downloads Cleared"
+                try await Task.detached { try engine.clearSharedDownloads(managerUpdateCache: managerUpdateCache) }.value
+                URLCache.shared.removeAllCachedResponses()
+                result.messageText = "Download Cache Cleared"
                 result.informativeText = "Create a new server to test a fresh download and installation. Existing servers are unchanged."
             } catch {
                 result.messageText = "Could Not Clear Downloads"
@@ -364,30 +370,6 @@ extension FleetModel {
             }
             clearingDownloads = false
             result.addButton(withTitle: "OK"); result.runModal()
-        }
-    }
-    func uninstallServerFiles() {
-        guard !models.contains(where: \.busy) else { return }
-        let alert = NSAlert(); alert.messageText = "Uninstall All Server Files?"
-        alert.informativeText = "Stops all servers and removes downloaded server files, environments, compatibility tools and shared downloads. Keeps server settings, archived worlds, backups and the manager app."
-        alert.addButton(withTitle: "Stop All & Uninstall"); alert.addButton(withTitle: "Cancel")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        for model in models { model.busy = true; model.serverProgress = nil; model.operationTitle = "Uninstalling server files…" }
-        let targets = models, store = store, shared = sharedDownloads
-        Task {
-            do {
-                while targets.contains(where: { $0.polling || $0.checkingRelease }) { try? await Task.sleep(for: .milliseconds(100)) }
-                for model in targets { await model.flushActivity() }
-                let active = targets.map(\.engine)
-                try await Task.detached {
-                    let retained = try store.retainedInstallations().map { Engine(home: URL(fileURLWithPath: $0.home), resources: active[0].resources) }
-                    try active[0].withSharedDownloads {
-                        for engine in active + retained { try engine.uninstallServerFiles { _ in } }
-                        if FileManager.default.fileExists(atPath: shared.path) { try FileManager.default.removeItem(at: shared) }
-                    }
-                }.value
-            } catch { self.error = error.localizedDescription }
-            for model in targets { model.busy = false; model.refresh() }
         }
     }
     func recoverServer() {

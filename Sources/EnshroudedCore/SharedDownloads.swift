@@ -22,7 +22,7 @@ extension Engine {
         return !excluded.contains(home.standardizedFileURL.resolvingSymlinksInPath().path)
     }
 
-    public func clearSharedDownloads() throws {
+    public func clearSharedDownloads(managerUpdateCache: URL? = nil) throws {
         guard let sharedDownloads else { return }
         try withSharedDownloads {
             let fm = FileManager.default
@@ -34,9 +34,18 @@ extension Engine {
             let excluded = oldHomes.map { $0.standardizedFileURL.resolvingSymlinksInPath().path }
             try JSONEncoder().encode(excluded).write(to: sharedDownloads.deletingLastPathComponent().appendingPathComponent("downloads-reset"), options: .atomic)
             // Preserve the directory: existing VMs may have it mounted.
+            var caches = oldHomes.map { $0.appendingPathComponent("cache") }
+            if let managerUpdateCache { caches.append(managerUpdateCache) }
+            // These are downloaded archives only, never VM disks or game folders.
+            for cache in caches where fm.fileExists(atPath: cache.path) {
+                guard cache.resolvingSymlinksInPath().standardizedFileURL.path == cache.standardizedFileURL.path else {
+                    throw EngineError("Cannot clear a linked download cache: \(cache.path)")
+                }
+            }
             for file in try fm.contentsOfDirectory(at: sharedDownloads, includingPropertiesForKeys: nil) {
                 try fm.removeItem(at: file)
             }
+            for cache in caches where fm.fileExists(atPath: cache.path) { try fm.removeItem(at: cache) }
         }
     }
 

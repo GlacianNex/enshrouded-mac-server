@@ -3,7 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 channel="${RELEASE_CHANNEL:-stable}"
 [[ "$channel" == stable || "$channel" == experimental ]] || { echo 'RELEASE_CHANNEL must be stable or experimental' >&2; exit 1; }
-version="${VERSION:-0.1.15}"
+version="${VERSION:-0.1.16}"
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'VERSION must use major.minor.patch' >&2; exit 1; }
 build_version="$(date -u +%y%m%d.%H%M.%S)"
 build_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
