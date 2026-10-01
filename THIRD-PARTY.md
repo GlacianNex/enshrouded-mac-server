@@ -14,4 +14,4 @@ The manager source is MIT licensed. The Enshrouded icon in `Assets/Enshrouded.pn
 - **DepotDownloader 3.4.0** — GPL-2.0. [Source](https://github.com/SteamRE/DepotDownloader/tree/DepotDownloader_3.4.0).
 - **Enshrouded dedicated server and Steam runtime** — proprietary publisher software downloaded from Valve. They are not bundled or relicensed.
 
-The release does not redistribute a prebuilt guest image, game binaries. macOS and Apple's virtualization framework provide the host platform. CrossOver, Docker Desktop, and Rosetta are not required.
+The release does not redistribute a prebuilt guest image or game binaries. macOS and Apple's virtualization framework provide the host platform. CrossOver, Docker Desktop, and Rosetta are not required.

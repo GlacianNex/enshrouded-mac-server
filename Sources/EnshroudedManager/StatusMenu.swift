@@ -149,11 +149,6 @@ import EnshroudedCore
                 enabled: { [weak self] in self?.fleet.checkingManagerRelease == false }) { self.fleet.checkManagerUpdates() }
         }
         menu.addItem(.separator())
-        addLive(to: menu, title: { "Update Enshrouded Server…" }, enabled: { [weak self] in
-            guard let self else { return false }
-            return !self.fleet.models.contains(where: \.busy) && self.fleet.models.contains { $0.releaseError == nil && $0.releaseCheckedAt != nil && $0.release?.updateAvailable == true }
-        }) { self.fleet.updateAllServers() }
-        menu.addItem(.separator())
         for server in servers {
             let submenu = NSMenu(); submenu.autoenablesItems = false
             let row = NSMenuItem(title: server.menuTitle, action: nil, keyEquivalent: "")
@@ -173,7 +168,22 @@ import EnshroudedCore
             add("Server Management…", to: submenu) { self.open(server) }
         }
         menu.addItem(.separator())
-        add("Enshrouded Server Build \(fleet.selected.engine.installedManifest ?? "Unavailable")", to: menu)
+        addLive(to: menu, title: { [weak self] in
+            guard let self else { return "Enshrouded Server" }
+            let servers = self.fleet.configuredModels
+            let available = servers.contains { $0.releaseError == nil && $0.releaseCheckedAt != nil && $0.release?.updateAvailable == true }
+            let current = !servers.isEmpty && servers.allSatisfy {
+                $0.releaseError == nil && $0.releaseCheckedAt != nil && $0.release?.installed != nil && $0.release?.updateAvailable == false
+            }
+            let status = available ? " · Update Available" : current ? " · Up to Date" : ""
+            return "Enshrouded Server Build \(self.fleet.selected.engine.installedManifest ?? "Unavailable")\(status)"
+        }, enabled: { [weak self] in
+            guard let self else { return false }
+            return !self.fleet.models.contains(where: \.busy) && self.fleet.configuredModels.contains {
+                $0.releaseError == nil && $0.releaseCheckedAt != nil && $0.release?.updateAvailable == true
+            }
+        }) { self.fleet.updateAllServers() }
+        menu.items.last?.toolTip = "When an update is available, click here to update the Enshrouded game servers."
         addUpdateCheck(to: menu)
 
         addLive(to: menu, title: { "Automatically Update All Enshrouded Servers" }, enabled: { [weak self] in self?.fleet.canChangeProfiles == true }, checked: { [weak self] in self?.fleet.models.allSatisfy { $0.automation.automaticUpdates } == true }) {

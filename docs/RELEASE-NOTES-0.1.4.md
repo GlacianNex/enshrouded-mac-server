@@ -1,5 +1,7 @@
 # 0.1.4 — Reliable Updates with a Running Server
 
+> Historical record. Later behavior and verification are documented in [0.1.18 release notes](RELEASE-NOTES-0.1.18.md) and the current setup guide. Earlier candidate descriptions are not current instructions.
+
 Candidate · Includes the 0.1.3 candidate changes
 
 ## What Changed

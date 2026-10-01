@@ -1,5 +1,7 @@
 # 0.1.3 — Setup Progress and Server Uninstall
 
+> Historical record. Later behavior and verification are documented in [0.1.18 release notes](RELEASE-NOTES-0.1.18.md) and the current setup guide. Earlier candidate descriptions are not current instructions.
+
 Candidate · Changes since 0.1.2
 
 ## What Changed

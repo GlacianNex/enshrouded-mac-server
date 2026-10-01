@@ -1,5 +1,7 @@
 # Parity Implementation Plan — 2026-09-30
 
+> Historical record. Later behavior and verification are documented in [0.1.18 release notes](RELEASE-NOTES-0.1.18.md) and the current setup guide. Earlier candidate descriptions are not current instructions.
+
 Based on [the full audit](VALHEIM-PARITY-AUDIT-2026-09-30.md). Status at creation: audit complete; implementation not started, except the unshipped L01 delegate fix already under investigation. Findings retain their baseline IDs throughout implementation.
 
 ## 1. Protect lifecycle and update decisions

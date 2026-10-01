@@ -1,5 +1,7 @@
 # 0.1.5 — Hosting and Server Management Fixes
 
+> Historical record. Later behavior and verification are documented in [0.1.18 release notes](RELEASE-NOTES-0.1.18.md) and the current setup guide. Earlier candidate descriptions are not current instructions.
+
 Candidate · Includes the earlier candidate fixes
 
 - Fixes a UDP forwarding connection leak that eventually made running servers disappear from discovery. Idle forwarding connections now expire; active traffic stays connected.

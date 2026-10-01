@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.18 — 2026-10-01
+
+Public release consolidating candidates 0.1.3–0.1.17: unified setup and progress, reliable background hosting and updates, responsive logs and menus, queued startups, complete per-server deletion, confirmed cache cleanup and macOS dependency checks. Manager and game-server updates now use their respective version rows instead of a separate disabled update button.
+
+See the [0.1.18 release notes](docs/RELEASE-NOTES-0.1.18.md). The candidate entries below preserve the development history; later entries supersede earlier behavior.
+
 ## 0.1.17 (Candidate)
 
 - Build the bundled VM launcher for macOS 14+, independent of the developer Mac's SDK version; invalidate cached launchers when the build recipe changes.

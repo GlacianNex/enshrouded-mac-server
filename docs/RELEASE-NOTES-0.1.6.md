@@ -1,5 +1,7 @@
 # 0.1.6 — Clear Update Progress
 
+> Historical record. Later behavior and verification are documented in [0.1.18 release notes](RELEASE-NOTES-0.1.18.md) and the current setup guide. Earlier candidate descriptions are not current instructions.
+
 Candidate · Includes the earlier candidate fixes
 
 Manager updates now show the current stage, an animated progress bar, elapsed time, and an Open Update Log button. This appears for both downloaded installers and in-app updates. Each stage explains what is happening, including saving worlds, stopping the hosting environment, replacing the app, and reopening the manager. Long waits show a stage-specific explanation instead of silently displaying the same generic message.

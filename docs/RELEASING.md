@@ -8,7 +8,7 @@ Update the version default in `scripts/build.sh`, changelog, and release notes, 
 
 ```sh
 swift test
-VERSION=0.1.2 SIGNING_IDENTITY='Developer ID Application: YOUR NAME (TEAMID)' bash scripts/build.sh
+VERSION=0.1.18 SIGNING_IDENTITY='Developer ID Application: YOUR NAME (TEAMID)' bash scripts/build.sh
 NOTARY_PROFILE=ESM_NOTARY bash scripts/notarize.sh
 ```
 
@@ -59,7 +59,7 @@ Follow the Valheim dedicated-server manager's published notes: lead with what ch
 - Run appropriate tests, sign, notarize, staple, and verify both ZIP extraction methods. Preserve notarization diagnostics, including submission IDs after timeouts.
 - Commit the exact release source and documentation, push, and wait for successful CI. Create the draft against that exact commit, not an implicit moving default branch.
 - Download the candidate through a browser on another supported Mac, keeping quarantine intact. Test first open, installation, quit/reopen, and upgrade from the previous manager. Use disposable server data for start/save/stop/restart checks. Record the tested Mac and macOS version and any uncovered cases. Local signing checks do not substitute for this test.
-- Confirm the uploaded ZIP's checksum, app version, signature, ticket, asset names, and release notes. Keep the candidate a draft until required validation is complete.
+- Confirm the uploaded ZIP's checksum, app version, signature, ticket, asset names, and release notes. Keep the candidate a draft until build, automated checks, signing, notarization and archive validation pass. Record unavailable hardware/integration checks explicitly in the notes; do not claim they passed.
 - Publish a regular release as Latest. Verify `/releases/latest` resolves to its tag, the README's What's New opens the corresponding notes, and setup/release links resolve. Confirm only the intended ZIP and checksum assets are present.
 - Never silently replace a published binary. Ship a new patch version for corrections. Mark broken older releases superseded without erasing their history.
 
@@ -67,6 +67,6 @@ Follow the Valheim dedicated-server manager's published notes: lead with what ch
 
 Valheim separates stable releases, Experimental builds, and official game-server updates. Enshrouded follows that separation: Experimental builds are explicitly labeled, unsigned CI artifacts remain development builds, and official game-server versions are independent of the manager version.
 
-Valheim also checks GitHub for manager updates and validates the downloaded size, digest, version, signing identity, and Gatekeeper acceptance before installation. Enshrouded 0.1.2 includes stable manager-update discovery and verified downloads, with explicit confirmation before installation.
+Valheim also checks GitHub for manager updates and validates the downloaded size, digest, version, signing identity, and Gatekeeper acceptance before installation. Enshrouded includes stable manager-update discovery and verified downloads, with explicit confirmation before installation.
 
 The packaging implementation must stay Enshrouded-specific: Apple Silicon only, bundled Lima tools with internal symbolic links, and runtime/server downloads during setup. Retain the metadata-sidecar exclusion and both extraction checks added in 0.1.1.

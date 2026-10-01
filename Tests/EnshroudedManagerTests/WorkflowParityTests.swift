@@ -6,6 +6,45 @@ import EnshroudedCore
 @testable import EnshroudedManager
 
 final class WorkflowParityTests: XCTestCase {
+    @MainActor func testVersionRowsReplaceStandaloneUpdateButtons() async throws {
+        try await withFixture { _ in
+            let fleet = FleetModel()
+            defer { fleet.models.forEach { $0.retire() } }
+            let model = fleet.selected
+            try await settled(model)
+            fleet.managerCheckDate = Date()
+            let status = StatusMenu(fleet: fleet, showManagement: {})
+            defer { status.invalidate() }
+            status.menuNeedsUpdate(status.menu)
+            XCTAssertNil(status.menu.item(withTitle: "Update Enshrouded Server…"))
+            let manager = try XCTUnwrap(status.menu.items.first)
+            XCTAssertTrue(manager.title.hasSuffix("Up to Date"))
+            XCTAssertFalse(manager.isEnabled)
+            let server = try XCTUnwrap(status.menu.items.first { $0.title.hasPrefix("Enshrouded Server Build ") })
+            XCTAssertFalse(server.isEnabled)
+            XCTAssertFalse(server.title.contains("Up to Date"), "An unchecked version is not current")
+            status.menuWillOpen(status.menu)
+            model.release = ServerRelease(installed: "100", latest: "101")
+            model.releaseCheckedAt = Date(); model.releaseError = nil
+            status.refreshStatus()
+            XCTAssertTrue(server.title.hasSuffix("Update Available"))
+            XCTAssertTrue(server.isEnabled)
+            XCTAssertNotNil(server.action)
+            XCTAssertTrue(status.menu.items.contains { $0 === server }, "Update availability must change the existing version row")
+            model.busy = true
+            status.refreshStatus()
+            XCTAssertFalse(server.isEnabled)
+            model.busy = false
+            model.release = ServerRelease(installed: "101", latest: "101")
+            status.refreshStatus()
+            XCTAssertTrue(server.title.hasSuffix("Up to Date"))
+            XCTAssertFalse(server.isEnabled)
+            model.releaseError = "Check failed"
+            status.refreshStatus()
+            XCTAssertFalse(server.title.contains("Up to Date"))
+            status.menuDidClose(status.menu)
+        }
+    }
     @MainActor func testMenuDeleteCheckboxDoesNotOpenOrRestoreManagement() async throws {
         try await withFixture { _ in
             let fleet = FleetModel(), delegate = ManagerAppDelegate()

@@ -1,5 +1,12 @@
 # Verification
 
+## Release 0.1.18
+
+- Documentation review covered every tracked Markdown file: current README/setup, contributor/security/third-party guidance, distribution/release instructions, dependency inventory, verification, historical notes and parity audit/plan. Corrected obsolete setup, uninstall, experimental replacement, storage and update instructions. Historical records retain their evidence and now point to current guidance; all local documentation links resolve. Release notes follow the Valheim release structure and cover changes since public 0.1.2.
+- Full local suite: **221 Swift tests**, zero failures, one optional large-download test skipped; **13 Python tests** passed, plus shell syntax and documentation-link checks. The new native-menu regression verifies version-row states, retained row identity, unavailable/failed checks and busy gating.
+- Signed release packaging passed the macOS dependency gate and both ordinary ZIP and metadata-aware extraction checks. Final notarization and publication evidence will be appended after completion.
+- Earlier candidate sections retain the precise integration checks and limits. Another physical Mac, older macOS hosting, sustained multiplayer and full login/sleep testing remain pending. The delete-checkbox report remains unconfirmed. Production servers and the installed manager were not changed for release preparation.
+
 ## Candidate 0.1.17
 
 Manual-install artifact: `dist/Fresh-Mac-0.1.17-261001.1543.10/Enshrouded Server Manager.app`. Source commit: `2a35cc9`. Developer ID signing, Apple notarization, stapling, strict signature verification, Gatekeeper, pre-distribution checks and both archive extraction checks passed. The final copied candidate also passed the new runtime-dependency gate. No public release or production app replacement was performed.

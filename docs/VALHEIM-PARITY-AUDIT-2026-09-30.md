@@ -1,5 +1,7 @@
 # Valheim / Enshrouded Behavior Audit — 2026-09-30
 
+> Historical record. Later behavior and verification are documented in [0.1.18 release notes](RELEASE-NOTES-0.1.18.md) and the current setup guide. Earlier candidate descriptions are not current instructions.
+
 ## Outcome
 
 **Enshrouded 0.1.8 does not have full behavioral parity with Valheim.** Earlier reliability work transferred useful safeguards, but the old audit did not establish complete native-window, menu, or background-service behavior. In particular, changing SwiftUI's management scene from WindowGroup to Window introduced last-window termination without an explicit stay-running delegate policy. The subsequent quit-warning fix treated the symptom without covering the underlying close-window workflow.

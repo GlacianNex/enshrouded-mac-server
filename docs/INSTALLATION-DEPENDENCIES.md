@@ -1,6 +1,6 @@
 # Installation Dependencies
 
-Audit date: October 1, 2026. Applies to the 0.1.17 candidate and its pinned runtime. This describes installing the downloaded app, not building the project from source.
+Audit date: October 1, 2026. Applies to release 0.1.18 and its pinned runtime. This describes installing the downloaded app, not building the project from source.
 
 ## What the User Needs
 
@@ -55,7 +55,7 @@ The gate also found that upstream's optional Krunkit executable requires macOS 2
 
 `scripts/check-runtime-dependencies.py` now gates every build. It verifies required bundled files, Apple Silicon architecture, minimum OS metadata on every Mach-O slice, and system-only dynamic library dependencies. The app currently ships no private dylibs, so unresolved `@rpath` and developer-machine paths fail the gate. Its regressions reject the actual 27.0 deployment mistake, missing metadata, foreign platforms, weak external dependencies and incompatible universal slices. A newer SDK number is allowed when the deployment minimum remains supported.
 
-This audit does not retroactively repair already downloaded releases. Use a candidate built with the corrected launcher. One Apple Silicon download targets macOS 14 and newer; a separate macOS-27-only download is unnecessary.
+This audit does not retroactively repair already downloaded releases. Use release 0.1.18 or later, built with the corrected launcher. One Apple Silicon download targets macOS 14 and newer; a separate macOS-27-only download is unnecessary.
 
 ## Source-Build Requirements
 

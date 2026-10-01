@@ -7,3 +7,5 @@ The [implementation plan and outcome record](PARITY-IMPLEMENTATION-PLAN.md) maps
 Previous reliability work preserved useful installation, update, backup and packaging safeguards, but did not establish complete native interaction or background-service parity. A green unit-test count alone is not proof of the whole application experience.
 
 Shared manager workflows follow Valheim. Enshrouded retains its Windows compatibility environment, native roles/rules/save format, irregular game-reported simulation metrics and supported administration capabilities. The user's explicit UI/history/scheduling preferences remain in force. See the dated audit for the complete rationale and exceptions.
+
+The public [0.1.18 release](RELEASE-NOTES-0.1.18.md) includes subsequent setup, deletion, cache, menu and installer fixes through 0.1.17 plus the version-row update actions. Historical audit instructions about retained installations and global uninstall were superseded; use [Setup and Recovery](SETUP.md) for current behavior.
