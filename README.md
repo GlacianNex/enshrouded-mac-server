@@ -4,9 +4,9 @@ Host Enshrouded worlds for your friends from your Mac. This native macOS menu ba
 
 **[Download for Mac](https://github.com/GlacianNex/enshrouded-mac-server/releases/latest)** · [What's New in 0.1.18](docs/RELEASE-NOTES-0.1.18.md) · [Setup and Recovery](docs/SETUP.md)
 
-Requires **Apple Silicon and macOS 14 Sonoma or later**, internet access for setup, and **30 GB of free space**. Each server environment allocates 8 GB of RAM and four CPU cores; a Mac with at least 16 GB of RAM leaves room for macOS. The release is Developer ID signed and Apple-notarized.
+Requires **Apple Silicon, macOS 14 Sonoma or later, 30 GB of free space, and internet access**. **16 GB of RAM is recommended**; each server uses an environment with 8 GB of RAM and four CPU cores.
 
-No separate Xcode, Command Line Tools, Python, Steam client, Steam login, CrossOver, Wine, Docker, Homebrew, or Rosetta installation is needed. The manager automatically downloads its free compatibility tools and the official server during setup. Compilers and Linux libraries are installed inside the server's VM, not on macOS. The game server runs through a compatibility environment; it is not a native Mac port. See the [installation dependency audit](docs/INSTALLATION-DEPENDENCIES.md) for the full inventory and verification limits.
+Setup automatically downloads the latest Enshrouded server and its required tools. The app is signed and Apple-notarized. See [installation details](docs/INSTALLATION-DEPENDENCIES.md).
 
 ## What It Does
 
