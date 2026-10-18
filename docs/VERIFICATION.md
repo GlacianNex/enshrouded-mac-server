@@ -2,6 +2,16 @@
 
 ## Release 1.0.0 — 2026-10-18
 
+### Updated Speed History Build
+
+- Build `261018.1843.37`, source `e73c0c8`, supersedes the earlier 1.0.0 artifact below. Collects all complete speed reports in the log tail and connects readings within each run.
+- 224 Swift tests completed with zero failures and one optional test skipped. New regressions cover batch recovery, duplicate prevention and chart continuity across sparse reports versus server restarts.
+- The current server's native log and stdout both contained 25 speed reports, with gaps up to 13 minutes. Five-second speed measurements cannot be obtained from these logs; no held or interpolated value is recorded as a fresh measurement.
+- Apple accepted notarization `bf6d3203-25c7-42b7-b047-64d6c25ce063`. Strict signing, stapling, Gatekeeper and both archive extraction checks passed. SHA-256: `385fb096d3aff733d4024165858c50e35126ff9b5f19212e1bf1f6db8b908672`.
+- The installable app was copied to `~/Downloads/Enshrouded-1.0.0-261018.1843.37/` and passes signature and Gatekeeper validation. The installed manager and running server were not replaced or stopped. Second-Mac testing remains unperformed.
+
+### Earlier Candidate Verification
+
 - 222 Swift tests completed with zero failures and one optional large-download test skipped. All 13 Python tests passed.
 - New regression covers an empty registry without a false pending-installation or unavailable-build message, keeps New Server enabled, and preserves pending status for a registered server. Existing version-row regression passes.
 - Developer ID signing, Apple notarization (submission `5c9ef898-d033-4502-8179-cff8254bb2e4`), stapling and Gatekeeper passed. Both ditto and unzip extractions passed signature, ticket and Gatekeeper validation. GitHub CI run `39151752003` passed for source commit `49212ac`. Second-Mac validation has not been performed.
