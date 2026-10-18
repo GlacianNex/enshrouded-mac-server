@@ -68,7 +68,7 @@ The global menu's **Clear Download Cache…** confirms removal of shared downloa
 
 ## Experimental Builds
 
-Experimental builds are separate from stable manager releases and game-server versions. A stable installer refuses to silently replace an experimental app. To switch deliberately, quit the manager when idle and replace only the manager app in Applications with the signed stable app using Finder. Keep server folders and saved data.
+To switch from an experimental manager to stable, open the downloaded stable app and choose **Stop, Update & Relaunch**. The installer replaces the manager in Applications, preserves server data, and restarts servers that were running. Automatic update checks remain disabled on experimental builds.
 
 ## Live World Controls
 

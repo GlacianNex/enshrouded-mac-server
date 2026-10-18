@@ -8,6 +8,8 @@ Server speed readings form a connected history, and the manager retains every av
 
 ## What Changed
 
+- Switch from experimental to stable through the normal installer, with server data preserved.
+
 - Connect speed reports within each server run, preserving breaks across restarts.
 - Collect every complete speed report in the recent log instead of discarding all but the newest.
 - Keep report ages visible: Enshrouded can leave minutes between speed reports.

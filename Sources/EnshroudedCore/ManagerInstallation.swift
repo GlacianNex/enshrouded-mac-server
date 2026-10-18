@@ -11,9 +11,6 @@ public enum ManagerInstallation {
         let incoming = try BuildInfo.read(app: source)
         let installed = try BuildInfo.read(app: destination)
         guard incoming.canReplace(installed) else {
-            if installed.experimental && !incoming.experimental {
-                throw EngineError("An experimental manager is installed. To return to stable, replace the app in Applications using Finder.")
-            }
             throw EngineError("This stable version is already installed or newer.")
         }
         try verify(source)

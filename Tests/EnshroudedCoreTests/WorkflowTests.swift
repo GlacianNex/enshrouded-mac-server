@@ -2,12 +2,12 @@ import XCTest
 @testable import EnshroudedCore
 
 final class WorkflowTests: XCTestCase {
-    func testExperimentalBuildsAndReturnToStableUseExplicitReplacement() {
+    func testManuallyOpenedInstallerCanSwitchBetweenExperimentalAndStable() {
         let stable = BuildInfo(version: "1.0.0", build: "1", experimental: false)
         let experimental = BuildInfo(version: "0.2.0", build: "2", experimental: true)
         XCTAssertTrue(experimental.canReplace(stable))
         XCTAssertTrue(experimental.canReplace(experimental))
-        XCTAssertFalse(stable.canReplace(experimental))
+        XCTAssertTrue(stable.canReplace(experimental))
         XCTAssertFalse(stable.canReplace(stable))
         XCTAssertTrue(BuildInfo(version: "1.0.1", build: "3", experimental: false).canReplace(stable))
     }

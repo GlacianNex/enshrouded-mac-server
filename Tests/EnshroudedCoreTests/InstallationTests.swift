@@ -266,14 +266,22 @@ final class InstallationTests: XCTestCase {
         XCTAssertThrowsError(try ManagerInstallation.cleanupSuccessfulReplacement(previous: previousLink, destination: installed))
         XCTAssertTrue(files.fileExists(atPath: arbitrary.path))
     }
-    func testStableReplacementOfExperimentalExplainsFinderAction() throws {
+    func testStableInstallerReplacesExperimentalAfterManagerQuits() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let installed = try app(at: root, name: "Installed", experimental: true, build: "1")
         let incoming = try app(at: root, name: "Incoming", experimental: false, build: "2")
-        XCTAssertThrowsError(try ManagerInstallation.validate(incoming, replacing: installed)) { error in
-            XCTAssertTrue(error.localizedDescription.contains("using Finder"))
+        XCTAssertFalse(try ManagerInstallation.validate(incoming, replacing: installed).experimental)
+        var closed = false
+        let previous = try ManagerInstallation.replaceManagingServers(incoming, destination: installed, engines: []) {
+            XCTAssertTrue(try BuildInfo.read(app: installed).experimental)
+            closed = true
         }
+        XCTAssertTrue(closed)
+        XCTAssertFalse(try BuildInfo.read(app: installed).experimental)
+        XCTAssertEqual(try BuildInfo.read(app: installed).build, "2")
+        XCTAssertTrue(try BuildInfo.read(app: previous).experimental)
+        try ManagerInstallation.verify(installed)
     }
     func testSuccessfulFirstInstallCleansEmptyTransaction() throws {
         let files = FileManager.default

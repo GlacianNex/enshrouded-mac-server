@@ -2,6 +2,8 @@
 
 ## 1.0.0 — 2026-10-18
 
+- Allow the manually opened stable installer to replace an experimental manager through the normal save, stop and relaunch workflow.
+
 - Connect server speed readings within each run and retain all available reports after delayed polling or manager relaunch.
 
 - Show “No Servers” and “No Servers Installed” when no servers are registered, instead of reporting a nonexistent pending installation and unavailable build.
