@@ -6,6 +6,22 @@ import EnshroudedCore
 @testable import EnshroudedManager
 
 final class WorkflowParityTests: XCTestCase {
+    func testSpeedGraphConnectsSparseReportsButNotSeparateRuns() {
+        let start = Date(timeIntervalSince1970: 1_000_000)
+        let points = [
+            PerformancePoint(date: start, value: 22, segment: 0),
+            PerformancePoint(date: start.addingTimeInterval(180), value: 23, segment: 0),
+            PerformancePoint(date: start.addingTimeInterval(900), value: 22.5, segment: 0),
+            PerformancePoint(date: start.addingTimeInterval(960), value: 21, segment: 1)
+        ]
+        let speed = MetricGraph(title: "Speed", subtitle: "", points: points, color: .blue, connectsReports: true)
+        XCTAssertEqual(speed.chartPoints.map(\.segment), [0, 0, 0, 1])
+        XCTAssertEqual(speed.chartPoints.map(\.date), points.map(\.date))
+        XCTAssertEqual(speed.chartPoints.map(\.value), points.map(\.value))
+        let memory = MetricGraph(title: "Memory", subtitle: "", points: points, color: .blue, maximumGap: 7.5)
+        XCTAssertEqual(memory.chartPoints.map(\.segment), [0, 1, 2, 3])
+    }
+
     @MainActor func testEmptyFleetDoesNotReportPendingInstallationOrMissingBuild() async throws {
         try await withFixture { home in
             let registry = home.deletingLastPathComponent().appendingPathComponent("server-manager/profiles.json")

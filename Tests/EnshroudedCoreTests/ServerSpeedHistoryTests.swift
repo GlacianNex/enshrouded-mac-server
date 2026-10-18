@@ -8,6 +8,17 @@ final class ServerSpeedHistoryTests: XCTestCase {
         let text = (0..<count).map { "[I 00:" + String(format: "%02d", $0) + ":00,000] " + line }.joined()
         return .init(text: text, fileIdentifier: file, startOffset: 0, fileSize: UInt64(text.utf8.count), modifiedAt: reportAt ?? date.addingTimeInterval(Double(count - 1) * 60))
     }
+    func testInitialTailRestoresAllReportsAndDelayedPollDoesNotDropReadings() {
+        var history = ServerSpeedHistory()
+        history.observe(log(3), running: true, invocation: "a", at: date.addingTimeInterval(120))
+        XCTAssertEqual(history.points.map(\.date), [date, date.addingTimeInterval(60), date.addingTimeInterval(120)])
+        history.observe(log(6), running: true, invocation: "a", at: date.addingTimeInterval(300))
+        XCTAssertEqual(history.points.count, 6)
+        history.observe(log(6), running: true, invocation: "a", at: date.addingTimeInterval(305))
+        XCTAssertEqual(history.points.count, 6, "Overlapping polls must not duplicate reports")
+        XCTAssertEqual(history.lastReport, date.addingTimeInterval(300))
+    }
+
     func testFailedMetricsDoNotEraseReadingOrSplitMinuteReports() {
         var history = ServerSpeedHistory()
         history.observe(log(1), running: true, invocation: "a", at: date)

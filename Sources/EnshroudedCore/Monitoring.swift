@@ -6,7 +6,13 @@ public struct PeerStatus: Identifiable {
     public let ping: Double
     public let lost: Int
 }
+public struct SpeedReport {
+    public let relativeEnd: Int
+    public let elapsed: TimeInterval?
+    public let value: Double
+}
 public struct LogSnapshot {
+    public var speedReports: [SpeedReport] = []
     public var publicIP: String?
     public var updateRate: Double?
     public var averageWorkMS: Double?
@@ -61,6 +67,7 @@ public struct LogSnapshot {
                let updates = Double(c[0].replacingOccurrences(of: ",", with: "")), let milliseconds = Double(c[1].replacingOccurrences(of: ",", with: "")), milliseconds > 0 {
                 result.updateRate = updates / (milliseconds / 1000)
                 result.maxWorkMS = Double(c[2]); result.averageWorkMS = Double(c[3]); result.statsLine = line; result.statsReportEnd = offset; result.statsElapsed = elapsed
+                result.speedReports.append(.init(relativeEnd: offset, elapsed: elapsed, value: updates / (milliseconds / 1000)))
             }
         }
         return result
@@ -135,7 +142,7 @@ public struct LogTailSnapshot {
         date(for: parsed.statsElapsed, at: now)
     }
     public func peerReportDate(at now: Date = Date()) -> Date? { date(for: parsed.peerElapsed, at: now) }
-    private func date(for elapsed: TimeInterval?, at now: Date) -> Date? {
+    public func date(for elapsed: TimeInterval?, at now: Date) -> Date? {
         guard let modifiedAt, modifiedAt <= now, let last = parsed.lastElapsed,
               let elapsed, last.isFinite, elapsed.isFinite else { return nil }
         let age = last - elapsed
