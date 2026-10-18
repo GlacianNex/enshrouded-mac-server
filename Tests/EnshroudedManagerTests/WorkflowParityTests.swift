@@ -6,6 +6,28 @@ import EnshroudedCore
 @testable import EnshroudedManager
 
 final class WorkflowParityTests: XCTestCase {
+    @MainActor func testEmptyFleetDoesNotReportPendingInstallationOrMissingBuild() async throws {
+        try await withFixture { home in
+            let registry = home.deletingLastPathComponent().appendingPathComponent("server-manager/profiles.json")
+            try ProfileStore(registry: registry).save([])
+            let fleet = FleetModel()
+            defer { fleet.models.forEach { $0.retire() } }
+            try await settled(fleet.selected)
+            XCTAssertTrue(fleet.configuredModels.isEmpty)
+            XCTAssertTrue(fleet.selected.installationPending, "The internal placeholder is not a registered installation")
+            XCTAssertEqual(fleet.menuValue, "No Servers")
+            let status = StatusMenu(fleet: fleet, showManagement: {})
+            defer { status.invalidate() }
+            status.menuNeedsUpdate(status.menu)
+            XCTAssertNotNil(status.menu.item(withTitle: "No Servers Installed"))
+            XCTAssertFalse(status.menu.items.contains { $0.title.contains("Build Unavailable") })
+            XCTAssertEqual(status.menu.item(withTitle: "New Server…")?.isEnabled, true)
+            // A real registered server awaiting setup must retain its pending status.
+            try fleet.store.save([.init(id: "pending", name: "Pending Server", home: fleet.selected.engine.home.path, port: 15637)])
+            XCTAssertEqual(fleet.menuValue, "Installation Pending")
+        }
+    }
+
     @MainActor func testVersionRowsReplaceStandaloneUpdateButtons() async throws {
         try await withFixture { _ in
             let fleet = FleetModel()

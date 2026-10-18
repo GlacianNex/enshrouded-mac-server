@@ -73,3 +73,7 @@ Experimental builds are separate from stable manager releases and game-server ve
 ## Live World Controls
 
 World Rules, including weather frequency and day/night duration, apply after restarting the server. The manager does not provide live set-time, force-weather, spawn or remote-console commands. In-game moderation remains in Enshrouded’s Social tab.
+
+## Empty Manager
+
+Starting with 1.0.0, an empty server list shows **No Servers** in the menu bar and **No Servers Installed** in the version row. Choose **New Server…** to begin setup. Version 0.1.18 may incorrectly show **Installation Pending** and **Build Unavailable** when the list is empty; this does not mean an installation is running.

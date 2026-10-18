@@ -171,6 +171,7 @@ import EnshroudedCore
         addLive(to: menu, title: { [weak self] in
             guard let self else { return "Enshrouded Server" }
             let servers = self.fleet.configuredModels
+            guard !servers.isEmpty else { return "No Servers Installed" }
             let available = servers.contains { $0.releaseError == nil && $0.releaseCheckedAt != nil && $0.release?.updateAvailable == true }
             let current = !servers.isEmpty && servers.allSatisfy {
                 $0.releaseError == nil && $0.releaseCheckedAt != nil && $0.release?.installed != nil && $0.release?.updateAvailable == false

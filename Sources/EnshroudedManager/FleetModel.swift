@@ -80,6 +80,8 @@ import EnshroudedCore
         return models.filter { homes.contains($0.engine.home.path) }
     }
     var menuValue: String {
+        let models = configuredModels
+        guard !models.isEmpty else { return "No Servers" }
         if let busy = models.first(where: \.busy) { return busy.installationPending ? "Installation Pending" : busy.operationTitle }
         let running = models.filter { $0.state == "RUNNING" }
         if running.isEmpty && models.contains(where: \.installationPending) { return "Installation Pending" }

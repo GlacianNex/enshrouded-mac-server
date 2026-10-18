@@ -1,5 +1,11 @@
 # Verification
 
+## Candidate 1.0.0 — 2026-10-18
+
+- 222 Swift tests completed with zero failures and one optional large-download test skipped. All 13 Python tests passed.
+- New regression covers an empty registry without a false pending-installation or unavailable-build message, keeps New Server enabled, and preserves pending status for a registered server. Existing version-row regression passes.
+- Developer ID signing is available. Public release remains blocked by the missing ESM_NOTARY Keychain profile; no GitHub signing secrets are configured. No notarization or second-Mac validation is claimed for this candidate.
+
 ## Release 0.1.18
 
 - Documentation review covered every tracked Markdown file: current README/setup, contributor/security/third-party guidance, distribution/release instructions, dependency inventory, verification, historical notes and parity audit/plan. Corrected obsolete setup, uninstall, experimental replacement, storage and update instructions. Historical records retain their evidence and now point to current guidance; all local documentation links resolve. Release notes follow the Valheim release structure and cover changes since public 0.1.2.

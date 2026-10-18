@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.0 — 2026-10-18 (Candidate)
+
+- Show “No Servers” and “No Servers Installed” when no servers are registered, instead of reporting a nonexistent pending installation and unavailable build.
+- Preserve “Installation Pending” for actual registered servers awaiting setup.
+
+See the [1.0.0 release notes](docs/RELEASE-NOTES-1.0.0.md). Public release awaits Apple notarization.
+
 ## 0.1.18 — 2026-10-01
 
 Public release consolidating candidates 0.1.3–0.1.17: unified setup and progress, reliable background hosting and updates, responsive logs and menus, queued startups, complete per-server deletion, confirmed cache cleanup and macOS dependency checks. Manager and game-server updates now use their respective version rows instead of a separate disabled update button.
