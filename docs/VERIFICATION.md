@@ -2,6 +2,8 @@
 
 ## Release 1.0.1 — 2026-10-18
 
+- Final release validation: 228 Swift tests completed with zero failures and one optional large-download test skipped; all 13 Python tests passed. Both notarized ZIP extraction checks passed again before publication. The README uses the approved menu-bar image with the join address hidden.
+
 - Build `261018.1857.11`, source `47f42a5`: all 33 relevant installation, workflow and depot-record tests pass; guest script syntax validation passes.
 - Confirmed the affected installation had multiple cached manifests and no receipt because its downloader reused a cached manifest. Its authoritative `depot.config` identifies `6823302667609042502`. Recovered missing receipts and verified the live menu displays that exact build without stopping the server.
 - Apple accepted notarization `0e9de6ca-85df-4c2d-a6ce-1e7cdc2264a1`. Signing, stapling, Gatekeeper and both archive extraction checks passed. SHA-256: `1cdc1f1b23a08d94976fb7e66d12a883ff504b870ff6683bfe92fd1a3302249a`.

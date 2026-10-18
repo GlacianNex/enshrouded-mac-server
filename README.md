@@ -2,11 +2,13 @@
 
 Host Enshrouded worlds for your friends from your Mac. This native macOS menu bar app downloads the dedicated server, creates or imports worlds, and manages multiple servers without Terminal setup.
 
-**[Download for Mac](https://github.com/GlacianNex/enshrouded-mac-server/releases/latest)** · [What's New in 1.0.0](docs/RELEASE-NOTES-1.0.0.md) · [Setup and Recovery](docs/SETUP.md)
+**[Download for Mac](https://github.com/GlacianNex/enshrouded-mac-server/releases/latest)** · [What's New in 1.0.1](docs/RELEASE-NOTES-1.0.1.md) · [Setup and Recovery](docs/SETUP.md)
 
 Requires **Apple Silicon, macOS 14 Sonoma or later, 30 GB of free space, and internet access**. **16 GB of RAM is recommended**; each server uses an environment with 8 GB of RAM and four CPU cores.
 
 Setup automatically downloads the latest Enshrouded server and its required tools. The app is signed and Apple-notarized. See [installation details](docs/INSTALLATION-DEPENDENCIES.md).
+
+![Enshrouded menu bar and server controls; join address hidden](docs/images/enshrouded-menu-bar-cleaned.png)
 
 ## What It Does
 
@@ -32,7 +34,7 @@ Router forwarding is required for internet hosting. The app does not configure y
 
 Open a server's submenu and choose **Server Management**:
 
-- **Performance:** Server Speed and Server Memory graphs, plus a Ping tab. History covers three hours while the manager is open. Memory uses five-second averages; speed uses the game's reported one-minute averages, which can arrive several minutes apart. Missing data is not shown as zero.
+- **Performance:** Server Speed and Server Memory graphs, plus a Ping tab. History covers three hours. Memory uses five-second averages; speed uses the game’s reported one-minute averages, which can arrive several minutes apart. Available speed reports are restored from recent logs on reopening and connected within each server run. Missing readings are not recorded as zero or as fresh measurements.
 - **Automation:** start at login, schedule restarts by day/time, and enable daily backups. Changes save automatically. Keep the manager open for schedules to run.
 - **Moderation:** inspect reported connections and edit roles or saved bans while stopped.
 - **Backups:** create named backups, open the backup folder, and restore a selected backup while stopped. Restoration first creates a recovery backup.

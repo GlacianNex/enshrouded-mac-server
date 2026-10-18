@@ -8,7 +8,7 @@ Update the version default in `scripts/build.sh`, changelog, and release notes, 
 
 ```sh
 swift test
-VERSION=1.0.0 SIGNING_IDENTITY='Developer ID Application: YOUR NAME (TEAMID)' bash scripts/build.sh
+VERSION=1.0.1 SIGNING_IDENTITY='Developer ID Application: YOUR NAME (TEAMID)' bash scripts/build.sh
 NOTARY_PROFILE=ESM_NOTARY bash scripts/notarize.sh
 ```
 

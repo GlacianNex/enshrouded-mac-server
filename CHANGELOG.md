@@ -6,7 +6,9 @@
 - Record the build after cached downloads as well as fresh downloads.
 - Reject incomplete installation records instead of guessing from older manifests.
 
-## 1.0.0 — 2026-10-18
+See the [1.0.1 release notes](docs/RELEASE-NOTES-1.0.1.md). This release includes the 1.0.0 improvements below.
+
+## 1.0.0 — 2026-10-18 (Included in 1.0.1)
 
 - Allow the manually opened stable installer to replace an experimental manager through the normal save, stop and relaunch workflow.
 
