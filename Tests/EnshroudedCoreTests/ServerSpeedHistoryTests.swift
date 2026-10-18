@@ -8,6 +8,19 @@ final class ServerSpeedHistoryTests: XCTestCase {
         let text = (0..<count).map { "[I 00:" + String(format: "%02d", $0) + ":00,000] " + line }.joined()
         return .init(text: text, fileIdentifier: file, startOffset: 0, fileSize: UInt64(text.utf8.count), modifiedAt: reportAt ?? date.addingTimeInterval(Double(count - 1) * 60))
     }
+    func testManagerReopensWhileStoppedThenCollectsSmallerNewRunLog() {
+        for nextFile in ["new-run", "run-1"] {
+        var history = ServerSpeedHistory()
+        history.observe(log(10), running: false, invocation: nil, at: date.addingTimeInterval(600))
+        history.observe(log(1, file: nextFile, reportAt: date.addingTimeInterval(660)), running: true, invocation: "new", at: date.addingTimeInterval(660))
+        XCTAssertEqual(history.points.count, 1)
+        XCTAssertEqual(history.lastValue, 60)
+        XCTAssertEqual(history.lastReport, date.addingTimeInterval(660))
+        history.observe(log(2, file: nextFile, reportAt: date.addingTimeInterval(720)), running: true, invocation: "new", at: date.addingTimeInterval(720))
+        XCTAssertEqual(history.points.count, 2)
+        }
+    }
+
     func testInitialTailRestoresAllReportsAndDelayedPollDoesNotDropReadings() {
         var history = ServerSpeedHistory()
         history.observe(log(3), running: true, invocation: "a", at: date.addingTimeInterval(120))

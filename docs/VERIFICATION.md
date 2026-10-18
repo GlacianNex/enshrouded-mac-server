@@ -1,5 +1,13 @@
 # Verification
 
+## Release 1.0.2 — 2026-10-18
+
+- Reproduced the reported empty speed graph after manager update: the first stopped poll remembered an old log offset without its file identity. A smaller new log was incorrectly discarded. The regression failed with four assertions before the fix and passes for both rotated and truncated logs afterward.
+- All 229 Swift tests completed with zero failures and one optional large-download test skipped. All 13 Python checks passed during final release preparation; guest script and documentation links passed validation.
+- Verified the affected live manager recovered its speed history after reopening it while the server remained running: the chart displayed 22.5 updates/s and server uptime continued. The permanent fix retains the stopped log’s identity and size so startup detects its replacement.
+- Build `261018.1913.32` is Developer ID signed and Apple accepted notarization `2bec8bff-ad3a-486f-8b1d-2c8ad7f2be2b`. Stapling, Gatekeeper and extraction with both ditto and unzip passed. ZIP SHA-256: `1eb40637851c277ddcc8168ec6f81871601a29f0d49de4670890040cab3f2b27`.
+- README includes the approved menu-bar image with the join address hidden. Separate-Mac testing remains unperformed.
+
 ## Release 1.0.1 — 2026-10-18
 
 - Final release validation: 228 Swift tests completed with zero failures and one optional large-download test skipped; all 13 Python tests passed. Both notarized ZIP extraction checks passed again before publication. The README uses the approved menu-bar image with the join address hidden.

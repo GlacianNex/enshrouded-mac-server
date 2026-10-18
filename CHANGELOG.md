@@ -1,12 +1,19 @@
 # Changelog
 
-## 1.0.1 — 2026-10-18
+## 1.0.2 — 2026-10-18
+
+- Fix an empty speed graph after manager updates or startup: recognize a new server log even when the manager first observed the previous run while stopped.
+- Recover valid speed readings immediately instead of waiting for the new log to exceed the previous log’s size.
+
+See the [1.0.2 release notes](docs/RELEASE-NOTES-1.0.2.md). Includes the 1.0.1 and 1.0.0 improvements below.
+
+## 1.0.1 — 2026-10-18 (Included in 1.0.2)
 
 - Read the installed game-server build from DepotDownloader’s installation record, even when older manifests are cached.
 - Record the build after cached downloads as well as fresh downloads.
 - Reject incomplete installation records instead of guessing from older manifests.
 
-See the [1.0.1 release notes](docs/RELEASE-NOTES-1.0.1.md). This release includes the 1.0.0 improvements below.
+See the [1.0.1 release notes](docs/RELEASE-NOTES-1.0.1.md). These improvements are included in 1.0.2.
 
 ## 1.0.0 — 2026-10-18 (Included in 1.0.1)
 

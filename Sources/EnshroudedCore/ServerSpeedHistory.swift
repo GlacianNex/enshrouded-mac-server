@@ -24,7 +24,14 @@ public struct ServerSpeedHistory {
             if !stopped { segment += 1 }
             stopped = true; lastReport = nil; lastValue = nil; reportTimeKnown = false
             // Do not reread an old report as fresh after restarting.
-            if log.parsed.statsReportEnd > 0 { consumedOffset = log.startOffset + UInt64(log.parsed.statsReportEnd) }
+            if !log.fileIdentifier.isEmpty {
+                // The consumed offset belongs to this stopped run's file. Keep
+                // its identity and size so rotation/truncation on startup resets
+                // the offset even when this manager has never seen a running poll.
+                fileIdentifier = log.fileIdentifier; fileSize = log.fileSize
+                consumedOffset = log.parsed.statsReportEnd > 0
+                    ? log.startOffset + UInt64(log.parsed.statsReportEnd) : nil
+            }
             return
         }
         stopped = false

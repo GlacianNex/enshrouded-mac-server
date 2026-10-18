@@ -2,7 +2,7 @@
 
 Host Enshrouded worlds for your friends from your Mac. This native macOS menu bar app downloads the dedicated server, creates or imports worlds, and manages multiple servers without Terminal setup.
 
-**[Download for Mac](https://github.com/GlacianNex/enshrouded-mac-server/releases/latest)** · [What's New in 1.0.1](docs/RELEASE-NOTES-1.0.1.md) · [Setup and Recovery](docs/SETUP.md)
+**[Download for Mac](https://github.com/GlacianNex/enshrouded-mac-server/releases/latest)** · [What's New in 1.0.2](docs/RELEASE-NOTES-1.0.2.md) · [Setup and Recovery](docs/SETUP.md)
 
 Requires **Apple Silicon, macOS 14 Sonoma or later, 30 GB of free space, and internet access**. **16 GB of RAM is recommended**; each server uses an environment with 8 GB of RAM and four CPU cores.
 
