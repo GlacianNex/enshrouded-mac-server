@@ -8,11 +8,11 @@ Update the version default in `scripts/build.sh`, changelog, and release notes, 
 
 ```sh
 swift test
-VERSION=0.1.18 SIGNING_IDENTITY='Developer ID Application: YOUR NAME (TEAMID)' bash scripts/build.sh
+VERSION=1.0.0 SIGNING_IDENTITY='Developer ID Application: YOUR NAME (TEAMID)' bash scripts/build.sh
 NOTARY_PROFILE=ESM_NOTARY bash scripts/notarize.sh
 ```
 
-Configure your Developer ID certificate and a Keychain notarization profile as described in [Apple Distribution](APPLE-DISTRIBUTION.md). No signing keys belong in the repository.
+Configure your Developer ID certificate and a Keychain notarization profile as described in [Apple Distribution](APPLE-DISTRIBUTION.md). An existing Keychain profile can be reused by setting `NOTARY_PROFILE` to its name; it does not need to be named `ESM_NOTARY`. No signing keys belong in the repository.
 
 The scripts create `dist/Enshrouded-Server-Manager-for-Mac.zip` and `dist/SHA256SUMS.txt`. The ZIP contains only the `.app`, including its internal licenses. The runtime image and game server are downloaded during setup.
 

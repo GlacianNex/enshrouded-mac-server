@@ -1,11 +1,11 @@
 # Changelog
 
-## 1.0.0 — 2026-10-18 (Candidate)
+## 1.0.0 — 2026-10-18
 
 - Show “No Servers” and “No Servers Installed” when no servers are registered, instead of reporting a nonexistent pending installation and unavailable build.
 - Preserve “Installation Pending” for actual registered servers awaiting setup.
 
-See the [1.0.0 release notes](docs/RELEASE-NOTES-1.0.0.md). Public release awaits Apple notarization.
+See the [1.0.0 release notes](docs/RELEASE-NOTES-1.0.0.md).
 
 ## 0.1.18 — 2026-10-01
 

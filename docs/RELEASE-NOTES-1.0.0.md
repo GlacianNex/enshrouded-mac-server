@@ -14,7 +14,7 @@ An empty manager now says **No Servers** instead of appearing stuck in installat
 
 ## Install or Update
 
-**Draft: awaiting Apple notarization.** Keep using the [latest public release](https://github.com/GlacianNex/enshrouded-mac-server/releases/latest) until this candidate is published.
+Download the app from the [1.0.0 release](https://github.com/GlacianNex/enshrouded-mac-server/releases/tag/v1.0.0).
 
 Requires Apple Silicon and macOS 14 or later. Manager updates save and stop running servers, then resume them after installation. Existing server data is preserved.
 
@@ -24,4 +24,4 @@ Requires Apple Silicon and macOS 14 or later. Manager updates save and stop runn
 
 The regression covers an empty registry, the available New Server action, and a real pending installation. Existing version-row behavior is also tested. See [verification details](VERIFICATION.md).
 
-This candidate has not been tested on another physical Mac. Apple notarization is pending; it is not yet the public download.
+Developer ID signing, Apple notarization, stapling, Gatekeeper, and archive validation with both ditto and unzip passed. GitHub CI passed. This build has not been tested on another physical Mac.

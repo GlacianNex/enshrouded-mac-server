@@ -1,10 +1,11 @@
 # Verification
 
-## Candidate 1.0.0 — 2026-10-18
+## Release 1.0.0 — 2026-10-18
 
 - 222 Swift tests completed with zero failures and one optional large-download test skipped. All 13 Python tests passed.
 - New regression covers an empty registry without a false pending-installation or unavailable-build message, keeps New Server enabled, and preserves pending status for a registered server. Existing version-row regression passes.
-- Developer ID signing is available. Public release remains blocked by the missing ESM_NOTARY Keychain profile; no GitHub signing secrets are configured. No notarization or second-Mac validation is claimed for this candidate.
+- Developer ID signing, Apple notarization (submission `5c9ef898-d033-4502-8179-cff8254bb2e4`), stapling and Gatekeeper passed. Both ditto and unzip extractions passed signature, ticket and Gatekeeper validation. GitHub CI run `39151752003` passed for source commit `49212ac`. Second-Mac validation has not been performed.
+- Downloaded the notarized ZIP back from the GitHub draft; its SHA-256 matches the local package and published checksum (`1150316c39cb405cb98e3ccbc955385608d2d23da6956d05a16b0f2ba849df8a`). The downloaded app passes strict signature, stapled-ticket and Gatekeeper checks.
 
 ## Release 0.1.18
 
