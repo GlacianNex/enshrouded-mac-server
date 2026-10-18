@@ -12,9 +12,20 @@ public struct ServerRelease: Equatable {
 }
 extension Engine {
     public var installedManifest: String? {
-        // The receipt is written only after a successful install. Existing installs
-        // with exactly one depot manifest can be recognized without guessing newest.
-        if let receipt = try? String(contentsOf: data.appendingPathComponent("installed-manifest.txt")) { return receipt.trimmingCharacters(in: .whitespacesAndNewlines) }
+        let config = data.appendingPathComponent("server/.DepotDownloader/depot.config")
+        if FileManager.default.fileExists(atPath: config.path) {
+            // The downloader marks incomplete installations invalid. Never fall
+            // back to an older receipt or cached manifest in that case.
+            guard let bytes = try? Data(contentsOf: config) else { return nil }
+            return InstalledDepotManifest.read(bytes)
+        }
+        for path in ["server/.esm-manifest.txt", "installed-manifest.txt"] {
+            if let receipt = try? String(contentsOf: data.appendingPathComponent(path)) {
+                let value = receipt.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let number = UInt64(value), number > 0, number != UInt64.max { return value }
+            }
+        }
+        // Legacy installs without a downloader record can use one unambiguous manifest.
         let names = (try? FileManager.default.contentsOfDirectory(atPath: data.appendingPathComponent("server/.DepotDownloader").path)) ?? []
         let manifests = names.filter { $0.hasPrefix("2278521_") && $0.hasSuffix(".manifest") }
         guard manifests.count == 1 else { return nil }

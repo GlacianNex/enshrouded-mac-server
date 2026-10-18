@@ -97,7 +97,7 @@ case "${1:-}" in
         exit 1
       fi
     fi
-    game_manifest=$(sed -n 's/.*for depot 2278521 from app 2278520, manifest \([0-9]*\),.*/\1/p' "$DATA/logs/latest-install.log" | head -1)
+    game_manifest=$(sed -n -e 's/.*for depot 2278521 from app 2278520, manifest \([0-9]*\),.*/\1/p' -e 's/^Already have manifest \([0-9]*\) for depot 2278521\.$/\1/p' "$DATA/logs/latest-install.log" | head -1)
     if test -n "$game_manifest" && test -f "$DATA/server/.DepotDownloader/2278521_$game_manifest.manifest"; then
       printf '%s\n' "$game_manifest" > "$DATA/installed-manifest.txt"
       printf '%s\n' "$game_manifest" > "$DATA/server/.esm-manifest.txt"

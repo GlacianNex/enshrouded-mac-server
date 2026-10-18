@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1 — 2026-10-18
+
+- Read the installed game-server build from DepotDownloader’s installation record, even when older manifests are cached.
+- Record the build after cached downloads as well as fresh downloads.
+- Reject incomplete installation records instead of guessing from older manifests.
+
 ## 1.0.0 — 2026-10-18
 
 - Allow the manually opened stable installer to replace an experimental manager through the normal save, stop and relaunch workflow.
