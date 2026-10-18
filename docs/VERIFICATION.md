@@ -2,6 +2,13 @@
 
 ## Release 1.0.0 — 2026-10-18
 
+### Experimental-to-Stable Installer Fix
+
+- Build `261018.1846.24`, source `0004787`, supersedes the speed-history artifact below and includes its fixes.
+- All 29 installation/workflow tests passed. A signed fixture verifies stable replacement of an experimental manager, waits for its quit callback, and preserves the previous app for rollback. Automatic update checks remain disabled for experimental builds.
+- Apple accepted submission `07db2ab9-603e-4165-bb10-0dcd9db2a411`; stapling, Gatekeeper and both ZIP extraction checks passed. SHA-256: `31b93aba9f186c22f1c3709ec898a38908b669590fe9dcdc68ba1a12d84eb203`.
+- Delivered in `~/Downloads/Enshrouded-1.0.0-261018.1846.24/`; the copied app passes signature and Gatekeeper checks. Installed app and running server remain untouched.
+
 ### Updated Speed History Build
 
 - Build `261018.1843.37`, source `e73c0c8`, supersedes the earlier 1.0.0 artifact below. Collects all complete speed reports in the log tail and connects readings within each run.
